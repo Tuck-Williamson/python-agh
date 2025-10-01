@@ -15,7 +15,7 @@ project = "agh"
 year = "2025"
 author = "Tuck Williamson"
 copyright = f"{year}, {author}"
-version = release = "0.2.0"
+version = release = "0.2.1"
 
 pygments_style = "trac"
 templates_path = ["."]
