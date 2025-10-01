@@ -8,7 +8,6 @@ from dataclasses import field
 from dataclasses import fields
 from dataclasses import is_dataclass
 from typing import Any
-from typing import Self
 from typing import get_args
 from typing import get_origin
 
@@ -80,7 +79,7 @@ class DataclassJson:
             json.dump(data, f, indent=indent)
 
     @classmethod
-    def _from_json(cls, data: dict) -> Self:
+    def _from_json(cls, data: dict):
         for cur_field in fields(cls):
             # if get_origin(cur_field.type) == dict:
             #   print(f"{cur_field.name} = {data[cur_field.name]} and has type {cur_field.type}")
@@ -243,7 +242,7 @@ class Assignment(AssignmentData):
         self._directories.add(self.tests_dir)
 
     @classmethod
-    def load(cls, filepath: pathlib.Path) -> Self:
+    def load(cls, filepath: pathlib.Path):
         """Load an assignment from a JSON file or a directory.
 
         These objects are stored in JSON files in the same directory as the assignment.
@@ -319,7 +318,7 @@ class Assignment(AssignmentData):
         # Eventually meld the user defaults with the assignment settings.
         return self._GraderOptions
 
-    def add_required_file(self, new_file: submission_file_data) -> Self:
+    def add_required_file(self, new_file: submission_file_data):
         """Adds a new required file to the assignment.
 
         :param new_file: The new required file to add.
@@ -483,7 +482,7 @@ class Submission(submission_data):
         super().save(self.evaluation_directory / self.SUBMISSION_FILE_NAME)
 
     @classmethod
-    def load(cls, filepath: pathlib.Path) -> Self:
+    def load(cls, filepath: pathlib.Path):
         """Load a submission from a JSON file or a directory.
 
         These objects are stored in JSON files in the same directory as the assignment.
@@ -506,7 +505,7 @@ class Submission(submission_data):
         raise FileNotFoundError(filepath)
 
     @classmethod
-    def new(cls, assignment: Assignment, submission_file: pathlib.Path) -> Self:
+    def new(cls, assignment: Assignment, submission_file: pathlib.Path):
         """
         _Submission.new: Create a brand-new submission from a submission file.
 
