@@ -3,3 +3,5 @@ setuptools>=80
 setuptools_scm>=8
 tox>=4
 virtualenv>=20.34
+pytest>=8.4.2
+pytest-cov>=7.0.0
