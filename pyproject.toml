@@ -57,6 +57,9 @@ test = [
 [project.scripts]
 agh = "agh.cli:run"
 
+[project.entry-points.pytest11]
+agh-pytest-plugin = "agh.pytest_plugin"
+
 [project.urls]
 "Sources" = "https://github.com/Tuck-Williamson/python-agh"
 "Documentation" = "https://python-agh.readthedocs.io/"

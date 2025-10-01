@@ -3,8 +3,8 @@ import unittest
 
 import agh.anonimizer as anonimizer
 
-class TestAnonymize(unittest.TestCase):
 
+class TestAnonymize(unittest.TestCase):
     def test_deterministic(self):
         out1 = anonimizer.anonymize(
             submission_file_name="alice.txt",
