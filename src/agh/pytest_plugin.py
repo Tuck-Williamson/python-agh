@@ -1,5 +1,6 @@
 import pytest
 
+from .agh_data import Assignment, Submission
 
 class AghPtPlugin:
     def __init__(self, config):
@@ -87,11 +88,11 @@ def json_report_data(request):
     return add_data
 
 
-@pytest.fixture(autouse=True)
-def agh_test_fixture():
-    print(">> test fixture")
-    yield True
-    print("<<>> done!")
+# @pytest.fixture(autouse=True)
+# def agh_test_fixture():
+#     print(">> test fixture")
+#     yield True
+#     print("<<>> done!")
 
 
 def pytest_addoption(parser):
@@ -102,3 +103,14 @@ def pytest_configure(config):
     if config.getoption("--agh"):
         plugin = AghPtPlugin(config)
         config.pluginmanager.register(plugin, name="agh_plugin")
+        config.addinivalue_line("markers", "build: This marks anything related to building a submission's exe.")
+        config.addinivalue_line("markers", "render: This marks anything related to rendering a submission's documentation.")
+
+@pytest.fixture
+def agh_submission(request):
+    return Submission.load(request.path)
+
+@pytest.fixture
+def agh_assignment(request):
+    print(request.path)
+    return Assignment.load(request.path)

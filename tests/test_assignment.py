@@ -219,6 +219,9 @@ class TestAssignment(unittest.TestCase):
         self.assertEqual(a1, a)
         a2 = Assignment.load(a1._do_file)
         self.assertEqual(a2, a)
+        a.create_missing_directories()
+        a3 = Assignment.load(a.tests_dir)
+        self.assertEqual(a3, a)
 
     def test_missing_directories(self):
         base = self.base

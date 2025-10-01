@@ -4,6 +4,8 @@ import unittest
 from dataclasses import asdict
 from pathlib import Path
 
+import pytest
+
 from agh.agh_data import Assignment
 from agh.agh_data import Submission
 from agh.agh_data import submission_data
@@ -51,7 +53,8 @@ class TestSubmissionData(unittest.TestCase):
         file_store = self.file_store
 
         s1 = self.new_sub(
-            anon_name="test", original_name="bob.tar.gz", compiled_initially=True, initial_missing_files=["a.c", "b.c", "b.h"]
+            anon_name="test", original_name="bob.tar.gz", compiled_initially=True,
+            initial_missing_files=["a.c", "b.c", "b.h"]
         )
         s1_dup = self.new_sub(
             anon_name=s1.anon_name,
@@ -62,7 +65,8 @@ class TestSubmissionData(unittest.TestCase):
         self.assertEqual(s1, s1_dup)
 
         s2 = self.new_sub(
-            anon_name="test2", original_name="bob.tar.gz", compiled_initially=True, initial_missing_files=["a.c", "b.c", "b.h"]
+            anon_name="test2", original_name="bob.tar.gz", compiled_initially=True,
+            initial_missing_files=["a.c", "b.c", "b.h"]
         )
         self.assertNotEqual(s1, s2)
         self.assertNotEqual(s1, self.new_sub())
@@ -93,7 +97,8 @@ class TestSubmissionData(unittest.TestCase):
             file_store = base / "submission_data.json"
 
             s1 = self.new_sub(
-                anon_name="test", original_name="bob.tar.gz", compiled_initially=True, initial_missing_files=["a.c", "b.c", "b.h"]
+                anon_name="test", original_name="bob.tar.gz", compiled_initially=True,
+                initial_missing_files=["a.c", "b.c", "b.h"]
             )
 
             s1.save(file_store)
@@ -129,6 +134,10 @@ class TestSubmission(unittest.TestCase):
         s2 = Submission.load(s1.evaluation_directory)
         self.assertEqual(s1, s2)
 
+    def test_failed_load(self):
+        with pytest.raises(FileNotFoundError):
+            s1 = Submission.load(self.base)
+
     def tearDown(self):
         self.td.cleanup()
 
@@ -152,7 +161,8 @@ class TestTarSubmission(TestSubmission):
         for f in self.tar_files:
             self.assertTrue(
                 (s1.as_submitted_dir / f.name).exists(),
-                f"File in tar not found in as submitted directory.{'\n\t'.join([str(pth) for pth in s1.as_submitted_dir.iterdir()])}",
+                f"File in tar not found in as submitted directory."
+                f"{'\n\t'.join([str(pth) for pth in s1.as_submitted_dir.iterdir()])}",
             )
 
 
