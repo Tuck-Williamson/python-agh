@@ -24,7 +24,7 @@ extlinks = {
     "pr": ("https://github.com/Tuck-Williamson/python-agh/pull/%s", "PR #%s"),
 }
 
-html_theme = "sphinx_py3doc_enhanced_theme"
+# html_theme = "sphinx-rtd-theme"
 html_theme_options = {
     "source_repository": "https://github.com/Tuck-Williamson/python-agh/",
     "source_branch": "main",
