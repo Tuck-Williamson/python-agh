@@ -155,10 +155,11 @@ class TestTarSubmission(TestSubmission):
     def test_new_save_load(self):
         s1 = Submission.new(self.assignment, self.sub_file)
         self.assertTrue(s1.as_submitted_dir.exists(), "As submitted directory does not exist.")
+        lbreak = '\n\t'
         for f in self.tar_files:
             self.assertTrue(
                 (s1.as_submitted_dir / f.name).exists(),
-                f"File in tar not found in as submitted directory.{'\n\t'.join([str(pth) for pth in s1.as_submitted_dir.iterdir()])}",
+                f"File in tar not found in as submitted directory.{lbreak.join([str(pth) for pth in s1.as_submitted_dir.iterdir()])}",
             )
 
 

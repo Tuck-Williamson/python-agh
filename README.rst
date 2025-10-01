@@ -12,7 +12,8 @@ Overview
     * - tests
       - |github-actions| |codecov|
     * - package
-      - |version| |wheel| |supported-versions| |supported-implementations| |commits-since|
+      - |version| |wheel| |supported-versions| |supported-implementations|
+
 .. |docs| image:: https://readthedocs.org/projects/python-agh/badge/?style=flat
     :target: https://readthedocs.org/projects/python-agh/
     :alt: Documentation Status
@@ -41,9 +42,6 @@ Overview
     :alt: Supported implementations
     :target: https://pypi.org/project/agh
 
-.. |commits-since| image:: https://img.shields.io/github/commits-since/Tuck-Williamson/python-agh/v0.2.3.svg
-    :alt: Commits since latest release
-    :target: https://github.com/Tuck-Williamson/python-agh/compare/v0.2.3...main
 
 
 
