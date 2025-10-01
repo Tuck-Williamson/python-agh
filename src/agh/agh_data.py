@@ -57,10 +57,10 @@ class DataclassJson:
             if cur_field.type is pathlib.Path and isinstance(getattr(self, cur_field.name), pathlib.Path):
                 restore_these[cur_field.name] = getattr(self, cur_field.name)
                 setattr(self, cur_field.name, str(restore_these[cur_field.name]))
-            elif get_origin(cur_field.type) == list and get_args(cur_field.type)[0] is pathlib.Path:
+            elif get_origin(cur_field.type) is list and get_args(cur_field.type)[0] is pathlib.Path:
                 restore_these[cur_field.name] = getattr(self, cur_field.name)
                 setattr(self, cur_field.name, [str(cur_val) for cur_val in restore_these[cur_field.name]])
-            elif get_origin(cur_field.type) == dict and hasattr(get_args(cur_field.type)[-1], "asdict"):
+            elif get_origin(cur_field.type) is dict and hasattr(get_args(cur_field.type)[-1], "asdict"):
                 restore_these[cur_field.name] = getattr(self, cur_field.name)
                 setattr(self, cur_field.name, {cur_key: cur_val.asdict() for cur_key, cur_val in restore_these[cur_field.name].items()})
         # if len(restore_these) > 0:
@@ -75,7 +75,7 @@ class DataclassJson:
         return ret_val
 
     def save(self, filepath: pathlib.Path, indent: int = 2):
-        with open(filepath, "w") as f:
+        with filepath.open("w") as f:
             data = self.asdict()
             json.dump(data, f, indent=indent)
 
@@ -87,26 +87,26 @@ class DataclassJson:
 
             if hasattr(cur_field.type, "_from_json"):
                 data[cur_field.name] = cur_field.type._from_json(data[cur_field.name])
-            elif get_origin(cur_field.type) == list and hasattr(get_args(cur_field.type)[0], "_from_json"):
+            elif get_origin(cur_field.type) is list and hasattr(get_args(cur_field.type)[0], "_from_json"):
                 data[cur_field.name] = [get_args(cur_field.type)[0]._from_json(p) for p in data[cur_field.name]]
-            elif get_origin(cur_field.type) == dict and hasattr(get_args(cur_field.type)[-1], "_from_json"):
+            elif get_origin(cur_field.type) is dict and hasattr(get_args(cur_field.type)[-1], "_from_json"):
                 # print(data[cur_field.name])
                 data[cur_field.name] = {k: get_args(cur_field.type)[-1]._from_json(p) for k, p in data[cur_field.name].items()}
             elif is_dataclass(cur_field.type):
                 data[cur_field.name] = cur_field.type(**data[cur_field.name])
-            elif get_origin(cur_field.type) == list and is_dataclass(get_args(cur_field.type)[0]):
+            elif get_origin(cur_field.type) is list and is_dataclass(get_args(cur_field.type)[0]):
                 data[cur_field.name] = [get_args(cur_field.type)[0](**p) for p in data[cur_field.name]]
-            elif get_origin(cur_field.type) == dict and is_dataclass(get_args(cur_field.type)[-1]):
+            elif get_origin(cur_field.type) is dict and is_dataclass(get_args(cur_field.type)[-1]):
                 data[cur_field.name] = {k: get_args(cur_field.type)[-1](**p) for k, p in data[cur_field.name].items()}
-            elif cur_field.type == pathlib.Path:
+            elif cur_field.type is pathlib.Path:
                 data[cur_field.name] = pathlib.Path(data[cur_field.name])
-            elif cur_field.type == list[pathlib.Path]:
+            elif cur_field.type is list[pathlib.Path]:
                 data[cur_field.name] = [pathlib.Path(p) for p in data[cur_field.name]]
         return cls(**data)
 
     @classmethod
     def load_json(cls, filepath: pathlib.Path):
-        with open(filepath) as f:
+        with filepath.open() as f:
             data = json.load(f)
             # Transform the data to the correct types.
             return cls._from_json(data)
@@ -266,7 +266,7 @@ class Assignment(AssignmentData):
 
         raise FileNotFoundError(filepath)
 
-    def save(self, filepath: pathlib.Path = None, indent: int = 2):
+    def save(self, filepath: pathlib.Path | None = None, indent: int = 2):
         if filepath is None:
             filepath = self._do_file
         super().save(filepath, indent)
@@ -300,7 +300,7 @@ class Assignment(AssignmentData):
         sub_test.symlink_to(self.tests_dir, target_is_directory=True)
         return ret_val
 
-    def RunTests(self, submissions_to_test: Iterable["Submission"] = None):
+    def RunTests(self, submissions_to_test: Iterable["Submission"] | None = None):
         if submissions_to_test is None:
             submissions_to_test = self.Submissions
 
@@ -516,15 +516,17 @@ class Submission(submission_data):
         # This is a brand-new submission. Create the evaluation directories and move the submission file there.
         anon_name = None
         base_file_name = submission_file.name
+        base_file_name_set = False
         if assignment._options.anonymize_names:
             anon_name = cls.get_anon_name(assignment, submission_file)
         else:
             # See if we can parse an OAKS name from the submission file.
             # Ex: 341751-430460 - Alice Jones - Sep 18, 2025 1156 PM - p2sol.tar.gz
             match submission_file.stem.split(" - "):
-                case [student_id, student_name, date, file_name]:
+                case [_, student_name, _, file_name]:
                     anon_name = student_name
                     base_file_name = file_name
+                    base_file_name_set = True
                 case _:
                     anon_name = submission_file.stem
 
@@ -536,6 +538,9 @@ class Submission(submission_data):
         as_submitted_dir.mkdir(exist_ok=True, parents=True)
 
         my_submission_file = as_submitted_dir / (anon_name + "".join(submission_file.suffixes))
+        if base_file_name_set:
+            my_submission_file = as_submitted_dir / (base_file_name + "".join(submission_file.suffixes))
+
         # my_submission_file.symlink_to(submission_file)
         submission_file.rename(my_submission_file)
 
@@ -557,7 +562,7 @@ class Submission(submission_data):
         """
         super().__post_init__()
 
-    def __post_process_new__(self, assignment: Assignment, base_file_name: str = None):
+    def __post_process_new__(self, assignment: Assignment, base_file_name: str | None = None):
         """Post-process a brand-new submission.
         This method should be overridden by subclasses to perform any post-processing required for brand-new
         submissions.

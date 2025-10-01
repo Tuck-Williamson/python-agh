@@ -26,7 +26,7 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
+    #    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -67,10 +67,13 @@ agh-pytest-plugin = "agh.pytest_plugin"
 "Issue Tracker" = "https://github.com/Tuck-Williamson/python-agh/issues"
 
 [tool.ruff]
-extend-exclude = ["static", "ci/templates"]
+extend-exclude = ["static", "ci/templates", "src/agh/humanhash.py", "tests"]
 line-length = 140
-src = ["src", "tests"]
-target-version = "py39"
+src = [
+    "src",
+    #    "tests"
+]
+target-version = "py310"
 
 [tool.ruff.lint.per-file-ignores]
 "ci/*" = ["S"]
@@ -83,6 +86,8 @@ ignore = [
     "S603",   # flake8-bandit subprocess-without-shell-equals-true
     "S607",   # flake8-bandit start-process-with-partial-path
     "E501",   # pycodestyle line-too-long
+    "S605",   # injection with os.system
+    "S324",   # insecure hash (not using as a secure hash)
 ]
 select = [
     "B",   # flake8-bugbear
