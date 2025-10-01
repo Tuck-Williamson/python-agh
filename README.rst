@@ -41,9 +41,9 @@ Overview
     :alt: Supported implementations
     :target: https://pypi.org/project/agh
 
-.. |commits-since| image:: https://img.shields.io/github/commits-since/Tuck-Williamson/python-agh/v0.2.2.svg
+.. |commits-since| image:: https://img.shields.io/github/commits-since/Tuck-Williamson/python-agh/v0.2.3.svg
     :alt: Commits since latest release
-    :target: https://github.com/Tuck-Williamson/python-agh/compare/v0.2.2...main
+    :target: https://github.com/Tuck-Williamson/python-agh/compare/v0.2.3...main
 
 
 
