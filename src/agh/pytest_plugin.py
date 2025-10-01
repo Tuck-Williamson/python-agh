@@ -1,6 +1,8 @@
 import pytest
 
-from .agh_data import Assignment, Submission
+from .agh_data import Assignment
+from .agh_data import Submission
+
 
 class AghPtPlugin:
     def __init__(self, config):
@@ -106,9 +108,11 @@ def pytest_configure(config):
         config.addinivalue_line("markers", "build: This marks anything related to building a submission's exe.")
         config.addinivalue_line("markers", "render: This marks anything related to rendering a submission's documentation.")
 
+
 @pytest.fixture
 def agh_submission(request):
     return Submission.load(request.path)
+
 
 @pytest.fixture
 def agh_assignment(request):

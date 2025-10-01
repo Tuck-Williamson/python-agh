@@ -20,4 +20,6 @@ include CONTRIBUTING.rst
 include LICENSE
 include README.rst
 
+exclude conftest.py
+
 global-exclude *.py[cod] __pycache__/* *.so *.dylib .pre-commit-config.yaml
