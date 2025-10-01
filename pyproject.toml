@@ -9,7 +9,7 @@ dynamic = [
     "readme",
 ]
 name = "agh"
-version = "0.2.3"
+version = "0.2.4"
 license = "LGPL-3.0-or-later"
 license-files = ["LICENSE"]
 description = "An assignment grading helper"
