@@ -9,40 +9,6 @@ class AghPtPlugin:
         self.config = config
         self.test_dirs = []
         self.results = {}
-        # self.progress = Progress(
-        #     SpinnerColumn(),
-        #     TextColumn("[bold blue]{task.fields[dir]}"),
-        #     BarColumn(),
-        #     TimeElapsedColumn(),
-        # )
-        # self.tasks = {}
-        # self.json_data = {}
-
-    # def pytest_collection_modifyitems(self, session, config, items):
-    #     # Group tests by directory
-    #     dir_map = {}
-    #     for item in items:
-    #         test_dir = Path(item.fspath).parent
-    #         dir_map.setdefault(test_dir, []).append(item)
-    #     # console.print(dir_map)
-    #     self.test_dirs = list(dir_map.keys())
-
-    # def pytest_sessionstart(self, session):
-    #     console.print('[bold purple]RPP[/] session start.')
-    #     self.live = Live(self.progress, refresh_per_second=10)
-    #     self.live.start()
-
-    # def pytest_sessionfinish(self, session, exitstatus):
-    #     # self.live.stop()
-    #     # Write JSON report
-    #     with open("rich_parallel_report.json", "w") as f:
-    #         json.dump(self.json_data, f, indent=2)
-
-    # def pytest_configure(self, config):
-    #     config._json_report_data = self.json_data
-
-    # def pytest_unconfigure(self, config):
-    #     self.live.stop()
 
     def pytest_report_header(config, start_path, startdir):
         return "AGH Loaded"
@@ -50,29 +16,6 @@ class AghPtPlugin:
     def pytest_terminal_summary(self, terminalreporter, exitstatus, config):
         terminalreporter.write_line("[purple]AGH[/] Test run complete.")
         # terminalreporter.write_line("JSON report saved to rich_parallel_report.json")
-
-    # def run_tests_async(self):
-    #     return asyncio.run(self._run_all_tests())
-
-    # async def _run_all_tests(self):
-    #     console.print(f'\tTesting: {self.test_dirs}', style='purple')
-    #     tasks = []
-    #     for test_dir in self.test_dirs:
-    #         task = self.progress.add_task("Running", dir=str(test_dir), total=1)
-    #         self.tasks[test_dir] = task
-    #         tasks.append(self._run_test_dir(test_dir, task))
-    #     await asyncio.gather(*tasks)
-
-    # async def _run_test_dir(self, test_dir, task_id):
-    #     console.print(f'\t\tTesting [bold]{test_dir}[/ bold]:')
-    #     cmd = [sys.executable, "-m", "pytest", str(test_dir), "--disable-warnings"]
-    #     proc = await asyncio.create_subprocess_exec(
-    #         *cmd,
-    #         stdout=asyncio.subprocess.PIPE,
-    #         stderr=asyncio.subprocess.PIPE,
-    #     )
-    #     await proc.communicate()
-    #     self.progress.update(task_id, advance=1)
 
 
 @pytest.fixture
@@ -88,13 +31,6 @@ def json_report_data(request):
         report_data[key] = value
 
     return add_data
-
-
-# @pytest.fixture(autouse=True)
-# def agh_test_fixture():
-#     print(">> test fixture")
-#     yield True
-#     print("<<>> done!")
 
 
 def pytest_addoption(parser):
@@ -118,3 +54,62 @@ def agh_submission(request):
 def agh_assignment(request):
     print(request.path)
     return Assignment.load(request.path)
+
+
+def register_render_env_var(env_var_name: str, env_var_value, cache: pytest.Cache):
+    env_vars = cache.get("agh_render_env_vars", set())
+    env_vars.add(env_var_name)
+    cache.set("agh_render_env_vars", env_vars)
+    cache.set(env_var_name, env_var_value)
+
+
+@pytest.fixture
+@pytest.mark.build
+def agh_build_makefile(agh_submission, shell, cache):
+    request.applymarker(pytest.mark.build)
+    def build(target: str | None = None):
+        # Check to see if this is the first time we're building this submission.
+        first_build = False
+        if not cache.get("agh_build_makefile", False):
+            first_build = True
+
+        # Build the submission.
+        cmd = ["make"]
+        if target is not None:
+            cmd.append(target)
+        res = shell.run(cmd, shell=True, cwd=agh_submission.evaluation_directory, env={"AGH_BUILD_TESTING": 1})
+
+        # Update permanent cache state for initial build ok.
+        if first_build:
+            cache.set("agh_build_makefile", True)
+            build_ok_key = "agh_build_makefile_ok"
+            register_render_env_var(build_ok_key, res.returncode == 0, cache)
+        return res
+
+    yield build
+
+    if build.res != 0:
+        print(f"Build failed for {agh_submission.submission_file}")
+
+
+@pytest.fixture
+def agh_env_vars(cache):
+    environ = {}
+    for env_var_name in cache.get("agh_render_env_vars", set()):
+        environ[env_var_name] = cache.get(env_var_name, "")
+    return environ
+
+
+@pytest.fixture
+@pytest.mark.render
+def agh_render_quarto(agh_submission, shell, agh_env_vars,request):
+    request.applymarker(pytest.mark.render)
+    def render(target: str | None = None, *args):
+        cmd = ["quarto", "render"]
+        if target is not None:
+            cmd.append(target)
+        if len(args) > 0:
+            cmd.extend(args)
+        res = shell.run(cmd, shell=True, cwd=agh_submission.evaluation_directory, env=agh_env_vars)
+        return res
+    return render

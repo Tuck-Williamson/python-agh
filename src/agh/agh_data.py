@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from dataclasses import fields
 from dataclasses import is_dataclass
+from enum import IntEnum
 from typing import Any
 from typing import get_args
 from typing import get_origin
@@ -127,6 +128,7 @@ class submission_file_data(DataclassJson):
     include_in_output: bool = True
     description: str = ""
     unlisted: bool = False
+    copy_to_sub_if_missing: bool = True
 
     def __post_init__(self):
         if self.title == "":
@@ -287,6 +289,50 @@ class Assignment(AssignmentData):
         for subm_file in self._directory.rglob(Submission.SUBMISSION_FILE_NAME):
             yield Submission.load(subm_file)
 
+    class LinkProto(IntEnum):
+        # Raise an error if the file exists.
+        RAISE_ERROR = 0
+        # Ignore an error and continue with the rest of the links if the file exists (don't do anything).
+        IGNORE_ERROR = 1
+        # Overwrite the existing file if it already exists.
+        LINK_OVERWRITE = 2
+
+    def PostProcessSubmission(self, submission_file: "pathlib.Path|Submission", exists_protocol: LinkProto = LinkProto.RAISE_ERROR) -> "Submission":
+        ret_val = submission_file
+        if isinstance(submission_file, pathlib.Path):
+            ret_val = Submission.new(self, submission_file=submission_file)
+        # link in the tests.
+        sub_test = ret_val.evaluation_directory / "tests"
+        sub_test.symlink_to(self.tests_dir, target_is_directory=True)
+        for link_item in self.linkTemplateDir.iterdir():
+            link_tgt = ret_val.evaluation_directory / link_item.name
+
+            # Handle if the target is also a symlink
+            if link_item.is_symlink():
+                link_item = link_item.readlink()
+
+            # Depending on the protocol handle if there is already an existing link.
+            if link_tgt.exists():
+
+                # Handle if the link exists but is pointing to the correct target already - continue.
+                if link_tgt.is_symlink() and link_tgt.readlink() == link_item:
+                    continue
+
+                link_item.
+                match exists_protocol:
+                    case self.LinkProto.RAISE_ERROR:
+                        raise FileExistsError(link_tgt)
+                    case self.LinkProto.IGNORE_ERROR:
+                        continue
+                    case self.LinkProto.LINK_OVERWRITE:
+                        os.remove(link_tgt)
+                    case _:
+                        raise NotImplementedError("New existing link protocol added, but code not added")
+
+            link_tgt.symlink_to(link_item, target_is_directory=link_item.is_dir())
+
+        return ret_val
+
     def AddSubmission(self, submission_file: pathlib.Path) -> "Submission":
         """Add a new submission to the assignment.
         :param submission_file:
@@ -294,20 +340,23 @@ class Assignment(AssignmentData):
         :rtype: "Submission"
         """
         ret_val = Submission.new(self, submission_file=submission_file)
-        # link in the tests.
-        sub_test = ret_val.evaluation_directory / "tests"
-        sub_test.symlink_to(self.tests_dir, target_is_directory=True)
-        return ret_val
+        return self.PostProcessSubmission(ret_val)
 
-    def RunTests(self, submissions_to_test: Iterable["Submission"] | None = None):
-        if submissions_to_test is None:
-            submissions_to_test = self.Submissions
+    # def __pytest_cmd(self):
+    #     return "pytest ./ -p shell-utilities -p agh"
 
-        for submission in submissions_to_test:
-            self.RunTestsOnSubmission(submission)
-
-    def RunTestsOnSubmission(self, submission_to_test: "Submission"):
-        os.system(f'cd "{submission_to_test.evaluation_directory}" && pytest ./')
+    # def RunTests(self, submissions_to_test: Iterable["Submission"] | None = None):
+    #     if submissions_to_test is None:
+    #         submissions_to_test = self.Submissions
+    #
+    #     for submission in submissions_to_test:
+    #         self.RunTestsOnSubmission(submission)
+    #
+    # def RunTestsOnSubmission(self, submission_to_test: "Submission"):
+    #     os.system(f'cd "{submission_to_test.evaluation_directory}" && {self.__pytest_cmd()}')
+    #
+    # def RunBuildOnSubmission(self, submission_to_test: "Submission"):
+    #     os.system(f'cd "{submission_to_test.evaluation_directory}" && {self.__pytest_cmd()} -m build')
 
     @property
     def required_files(self):

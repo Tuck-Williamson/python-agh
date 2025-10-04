@@ -1,9 +1,13 @@
 # test_assignment.py
 import tempfile
 import unittest
+from email.mime import base
 from pathlib import Path
+import pytest
+from pytest import LineMatcher
 
 from agh.agh_data import Assignment
+from agh.agh_data import Submission
 from agh.agh_data import AssignmentData
 from agh.agh_data import submission_file_data
 
@@ -145,25 +149,6 @@ class TestAssignment(unittest.TestCase):
         self.td = tempfile.TemporaryDirectory()
         self.base = Path(self.td.name)
 
-    def create_test_files(self):
-        self.assignment = Assignment(self.base)
-        self.assignment.create_missing_directories()
-        test_base = self.assignment.tests_dir
-        # Create test files
-        self.test_files = [
-            test_base / "test_1.py",
-            test_base / "test_2.py",
-            test_base / "test_3.py",
-            test_base / "test_4.py",
-        ]
-        for idx, cur_file in enumerate(self.test_files):
-            cur_file.touch()
-            with open(cur_file, "w") as f:
-                for func_idx in range(idx + 1):
-                    f.write(f"def test_{idx}_{func_idx}():\n  assert True\n")
-                    # f.write(f"def test_{idx}_{func_idx}(json_report_data):\n  json_report_data('test_{idx}_{func_idx}', {idx})\n  assert True\n")
-            # print(cur_file.read_text())
-        return self.test_files
 
     def tearDown(self):
         super().tearDown()
@@ -241,16 +226,51 @@ class TestAssignment(unittest.TestCase):
         # All required directories should now exist
         self.assertEqual(a.get_missing_directories(), [])
 
+    def create_test_files(self):
+        self.assignment = Assignment(self.base)
+        self.assignment.create_missing_directories()
+        test_base = self.assignment.tests_dir
+        # Create test files
+        self.test_files = [
+            test_base / "test_1.py",
+            test_base / "test_2.py",
+            test_base / "test_3.py",
+            test_base / "test_4.py",
+        ]
+        for idx, cur_file in enumerate(self.test_files):
+            cur_file.touch()
+            with open(cur_file, "w") as f:
+                # for func_idx in range(idx + 1):
+                f.write(f"def test_{idx}():\n  assert True\n")
+                    # f.write(f"def test_{idx}_{func_idx}(json_report_data):\n  json_report_data('test_{idx}_{func_idx}', {idx})\n  assert True\n")
+            # print(cur_file.read_text())
+        return self.test_files
+
+    def create_unprocessed(self, num_unproc:int, ext:str = ".txt") -> list[Path]:
+        a = Assignment(assignment_directory=self.base)
+        a.create_missing_directories()
+        ret_val = [(a.unprocessed_dir / f"{idx}{ext}") for idx in range(num_unproc)]
+        for cur_file in ret_val:
+            cur_file.touch()
+        return ret_val
+
+    def create_makefile_build(self):
+        a = Assignment(assignment_directory=self.base)
+        a.create_missing_directories()
+        makefile = a.templateDir / "Makefile"
+        makefile.touch()
+        makefile.write_text("all:\n  echo 'Hello, world!'\nbad: noexist.c\n\tgcc -o bad noexist.c")
+        return makefile
+
     def test_submissions(self):
         # self.td = tempfile.TemporaryDirectory(delete=False)
         # self.base = Path(self.td.name)
         base = self.base
-        a = Assignment(assignment_directory=base)
+        a = Assignment(assignment_directory=self.base)
         a.create_missing_directories()
-        unproc = [(a.unprocessed_dir / f"{idx}.txt") for idx in range(4)]
+        unproc = self.create_unprocessed(5)
         cur_num_subm = 0
         for cur_file in unproc:
-            cur_file.touch()
             self.assertEqual(cur_num_subm, len([*a.Submissions]))
             a.AddSubmission(cur_file).save()
             cur_num_subm += 1
@@ -258,14 +278,68 @@ class TestAssignment(unittest.TestCase):
             a1 = Assignment.load(base)
             self.assertEqual(a1, a)
 
-        # def test_run_tests(self):
-        # base = Path(td)
-        a = Assignment(assignment_directory=base)
-        a.create_missing_directories()
-        tf_list = self.create_test_files()
-        a.RunTests()
-        # self.td.cleanup = lambda: None
+    def confirm_sub_was_tested(self, s: Submission, capsys):
+        out,err = capsys.readouterr()
+        LineMatcher(out.splitlines()).fnmatch_lines([
+            f"rootdir: {s.evaluation_directory}",
+        ])
 
+    @pytest.mark.xfail
+    def test_a_submission_tests(self, capsys):
+        a = Assignment(assignment_directory=self.base)
+        a.save()
+        a.create_missing_directories()
+        unsubmitted = self.create_unprocessed(2)
+        for cur_file in unsubmitted:
+            a.AddSubmission(cur_file).save()
+        self.create_test_files()
+        a.save()
+        s = next(a.Submissions)
+        a.RunTestsOnSubmission(s)
+        self.confirm_sub_was_tested(s)
+
+    def test_submissions_tests(self):
+        a = Assignment(assignment_directory=self.base)
+        a.save()
+        unsubmitted = self.create_unprocessed(2)
+        for cur_file in unsubmitted:
+            a.AddSubmission(cur_file).save()
+        self.create_test_files()
+        a.RunTests()
+        for s in a.Submissions:
+            self.confirm_sub_was_tested(s)
+
+    def test_a_submission_build(self):
+        a = Assignment(assignment_directory=self.base)
+        a.save()
+        a.create_missing_directories()
+        unsubmitted = self.create_unprocessed(2)
+        for cur_file in unsubmitted:
+            a.AddSubmission(cur_file).save()
+        tf = self.create_test_files()
+        build_test_text = """
+def test_build(agh_build_makefile):
+    ret = agh_build_makefile('all')
+    ret.stdout.matcher.fnmatch_lines(['Hello, world!'])
+    assert ret.ret == 0
+    """
+        tf[0].write_text(build_test_text)
+        self.create_makefile_build()
+        s = next(a.Submissions)
+        a.RunBuildOnSubmission(s)
+
+    def test_a_submission_build_bad(self):
+        a = Assignment(assignment_directory=self.base)
+        a.create_missing_directories()
+        a.save()
+        unsubmitted = self.create_unprocessed(2)
+        for cur_file in unsubmitted:
+            a.AddSubmission(cur_file).save()
+        tf = self.create_test_files()
+        tf[0].write_text("def test_build(agh_build_makefile):\n  ret = agh_build_makefile('bad')\n  assert ret.ret == 0")
+        self.create_makefile_build()
+        s = next(a.Submissions)
+        a.RunBuildOnSubmission(s)
 
 if __name__ == "__main__":
     unittest.main()

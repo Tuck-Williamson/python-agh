@@ -50,6 +50,7 @@ Overview
 An assignment grading helper
 
 * Free software: GNU Lesser General Public License v3 or later (LGPLv3+)
+* Based off of https://github.com/ionelmc/cookiecutter-pylibrary.
 
 Installation
 ============
@@ -86,8 +87,7 @@ Note, to combine the coverage data from all the tox environments run:
     - - Windows
       - ::
 
-            set PYTEST_ADDOPTS=--cov-append
-            tox
+            set PYTEST_ADDOPTS=--cov-append tox
 
     - - Other
       - ::

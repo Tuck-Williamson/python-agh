@@ -44,6 +44,8 @@ keywords = [
 ]
 requires-python = ">=3.9"
 dependencies = [
+    "pytest>=8.4.2",
+    "pytest-shell-utilities>=1.9.7",
 ]
 
 [project.optional-dependencies]
@@ -87,6 +89,7 @@ ignore = [
     "S607",   # flake8-bandit start-process-with-partial-path
     "E501",   # pycodestyle line-too-long
     "S605",   # injection with os.system
+    "S604",   # injection with os.system
     "S324",   # insecure hash (not using as a secure hash)
 ]
 select = [
