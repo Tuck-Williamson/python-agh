@@ -1,15 +1,17 @@
 from .agh_data import Assignment
+from .agh_data import OutputSectionData
 from .agh_data import Submission
-from .core import start
+from .agh_data import SubmissionFileData
+
+# from .core import start
 
 __version__ = "0.2.5"
 
-from .agh_data import Assignment, Submission, SubmissionFileData, OutputSectionData
 
 __all__ = [
-    "__version__",
     "Assignment",
+    "OutputSectionData",
     "Submission",
     "SubmissionFileData",
-    "OutputSectionData",
+    "__version__",
 ]

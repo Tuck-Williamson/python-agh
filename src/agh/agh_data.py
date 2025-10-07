@@ -388,7 +388,7 @@ class Assignment(AssignmentData):
                     case self.LinkProto.IGNORE_ERROR:
                         continue
                     case self.LinkProto.LINK_OVERWRITE:
-                        os.remove(link_tgt)
+                        link_tgt.unlink()
                     case _:
                         raise NotImplementedError("New existing link protocol added, but code not added")
 

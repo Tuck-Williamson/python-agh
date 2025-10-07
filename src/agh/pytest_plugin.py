@@ -65,7 +65,7 @@ def register_render_env_var(env_var_name: str, env_var_value, cache: pytest.Cach
 
 @pytest.fixture
 @pytest.mark.build
-def agh_build_makefile(agh_submission, shell, cache):
+def agh_build_makefile(agh_submission, shell, cache, request):
     request.applymarker(pytest.mark.build)
 
     def build(target: str | None = None):
