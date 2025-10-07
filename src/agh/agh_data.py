@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import pathlib
@@ -238,6 +239,27 @@ class Assignment(AssignmentData):
         :param assignment_directory: Path to the assignment directory root.
         :param do: Assignment data object.
         """
+        cur_date = datetime.datetime.now(tz=datetime.timezone.utc)
+        cur_date = cur_date.astimezone()
+        if "_year" not in kwargs:
+            kwargs["_year"] = cur_date.year
+        if "_grade_period" not in kwargs:
+            period = "Fall"
+            match cur_date.month:
+                case 1 | 2 | 3:
+                    period = "Spring"
+                case 4 | 5:
+                    period = "Maymester"
+                case 6:
+                    period = "SummerI"
+                case 7:
+                    period = "SummerII"
+                case 11 | 12:
+                    period = "Winter"
+                case _:
+                    period = "Fall"
+            kwargs["_grade_period"] = period
+
         super().__init__(*args, **kwargs)
         if assignment_directory is None:
             assignment_directory = pathlib.Path("./")
@@ -430,7 +452,7 @@ class Assignment(AssignmentData):
         # Eventually meld the user defaults with the assignment settings.
         return self._GraderOptions
 
-    def add_required_file(self, new_file: SubmissionFileData):
+    def addRequiredFile(self, new_file: SubmissionFileData):
         """Adds a new required file to the assignment.
 
         :param new_file: The new required file to add.
@@ -524,13 +546,13 @@ class Assignment(AssignmentData):
         for d in self.get_missing_directories():
             d.mkdir(exist_ok=True, parents=True)
 
-        readmes = self.get_readme_files()
+        # readmes = self.get_readme_files()
 
         # Populate the directories with READMEs.
-        for f, content in readmes:
-            if not f.exists():
-                f.parent.mkdir(exist_ok=True, parents=True)
-                f.write_text(content)
+        # for f, content in readmes:
+        #     if not f.exists():
+        #         f.parent.mkdir(exist_ok=True, parents=True)
+        #         f.write_text(content)
 
 
 @dataclass(kw_only=True)
