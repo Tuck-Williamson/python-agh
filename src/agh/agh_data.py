@@ -1,13 +1,14 @@
 import json
 import os
 import pathlib
-from collections.abc import Iterable
+from collections.abc import Generator
 from dataclasses import asdict
 from dataclasses import dataclass
 from dataclasses import field
 from dataclasses import fields
 from dataclasses import is_dataclass
 from enum import IntEnum
+from pathlib import Path
 from typing import Any
 from typing import get_args
 from typing import get_origin
@@ -137,6 +138,60 @@ class submission_file_data(DataclassJson):
                 self.title = self.path.name
             else:
                 self.title = self.path.name
+
+    @property
+    def anchorText(self) -> str:
+        """Returns the anchor text for the section suitable in use for Markdown links."""
+        return f"{self.title.lower().replace(' ', '-')}"
+
+    @property
+    def qmdLink(self) -> str:
+        return f"[{self.title}]({self.title}.qmd)"
+
+    @property
+    def sectionAttr(self) -> str:
+        if self.unlisted:
+            return " {.unlisted .unnumbered}"
+        return ""
+
+    def asQmdSection(self, heading_level: int) -> str:
+        if not self.include_in_output:
+            return ""
+        if not self.path.exists():
+            self.path.touch()
+
+        hdr_txt = "#" * heading_level + self.title + self.sectionAttr
+        return f"\n\n{self.description}\n\n{hdr_txt}\n\n```{{.{self.type}}}\n{{{{< include {self.path} >}}}}\n```\n\n"
+
+
+# Mark all fields as keyword-only so that we can load directly from JSON.
+@dataclass(kw_only=True)
+class OutputSectionData(submission_file_data):
+    text: str = ""
+    instructor_section: bool = False
+    heading_level: int = 2
+    included_files: list[submission_file_data] = field(default_factory=list)
+    included_sections: list["OutputSectionData"] = field(default_factory=list)
+    only_output_if_data: bool = False
+    post_script: str = ""
+
+    @property
+    def hasData(self):
+        if len(self.included_sections) > 0 or len(self.included_files) > 0:
+            return True in [cur_sub_sec.hasData for cur_sub_sec in self.included_sections] or True in [
+                (cur_inc_file.path.exists() and cur_inc_file.path.stat().st_size > 1) for cur_inc_file in self.included_files
+            ]
+        elif self.text.strip() != "":
+            # If there are no 'includes' then the section is the data
+            return True
+        return False
+
+    def asQmdSection(self) -> str:
+        if not self.hasData and self.only_output_if_data:
+            return ""
+        inc_file_txt = "\n\n".join([cur_inc_file.asQmdSection(self.heading_level + 1) for cur_inc_file in self.included_files])
+        inc_sec_txt = "\n\n".join([cur_inc_sec.asQmdSection() for cur_inc_sec in self.included_files])
+        return f"{super().asQmdSection(self.heading_level)}\n\n{inc_file_txt}\n\n{inc_sec_txt}\n\n{self.post_script}"
 
 
 # Mark all fields as keyword-only so that we can load directly from JSON.
@@ -297,14 +352,24 @@ class Assignment(AssignmentData):
         # Overwrite the existing file if it already exists.
         LINK_OVERWRITE = 2
 
-    def PostProcessSubmission(self, submission_file: "pathlib.Path|Submission", exists_protocol: LinkProto = LinkProto.RAISE_ERROR) -> "Submission":
+    def PostProcessSubmission(
+        self, submission_file: "pathlib.Path|Submission", exists_protocol: LinkProto = LinkProto.RAISE_ERROR
+    ) -> "Submission":
         ret_val = submission_file
         if isinstance(submission_file, pathlib.Path):
-            ret_val = Submission.new(self, submission_file=submission_file)
+            ret_val = Submission.load(filepath=submission_file)
         # link in the tests.
-        sub_test = ret_val.evaluation_directory / "tests"
-        sub_test.symlink_to(self.tests_dir, target_is_directory=True)
-        for link_item in self.linkTemplateDir.iterdir():
+
+        def all_linked_files() -> Generator[Path]:
+            """Internal generator to get all the files to be linked."""
+            yield ret_val.evaluation_directory / "tests"
+            for link_item in self.linkTemplateDir.iterdir():
+                yield link_item
+            for link_item in self._optional_files.values():
+                if link_item.copy_to_sub_if_missing and not (ret_val.evaluation_directory / link_item.path.name).exists():
+                    yield link_item.path
+
+        for link_item in all_linked_files():
             link_tgt = ret_val.evaluation_directory / link_item.name
 
             # Handle if the target is also a symlink
@@ -313,12 +378,10 @@ class Assignment(AssignmentData):
 
             # Depending on the protocol handle if there is already an existing link.
             if link_tgt.exists():
-
                 # Handle if the link exists but is pointing to the correct target already - continue.
                 if link_tgt.is_symlink() and link_tgt.readlink() == link_item:
                     continue
 
-                link_item.
                 match exists_protocol:
                     case self.LinkProto.RAISE_ERROR:
                         raise FileExistsError(link_tgt)
@@ -340,7 +403,7 @@ class Assignment(AssignmentData):
         :rtype: "Submission"
         """
         ret_val = Submission.new(self, submission_file=submission_file)
-        return self.PostProcessSubmission(ret_val)
+        return self.PostProcessSubmission(ret_val, exists_protocol=self.LinkProto.RAISE_ERROR)
 
     # def __pytest_cmd(self):
     #     return "pytest ./ -p shell-utilities -p agh"

@@ -67,6 +67,7 @@ def register_render_env_var(env_var_name: str, env_var_value, cache: pytest.Cach
 @pytest.mark.build
 def agh_build_makefile(agh_submission, shell, cache):
     request.applymarker(pytest.mark.build)
+
     def build(target: str | None = None):
         # Check to see if this is the first time we're building this submission.
         first_build = False
@@ -102,8 +103,9 @@ def agh_env_vars(cache):
 
 @pytest.fixture
 @pytest.mark.render
-def agh_render_quarto(agh_submission, shell, agh_env_vars,request):
+def agh_render_quarto(agh_submission, shell, agh_env_vars, request):
     request.applymarker(pytest.mark.render)
+
     def render(target: str | None = None, *args):
         cmd = ["quarto", "render"]
         if target is not None:
@@ -112,4 +114,5 @@ def agh_render_quarto(agh_submission, shell, agh_env_vars,request):
             cmd.extend(args)
         res = shell.run(cmd, shell=True, cwd=agh_submission.evaluation_directory, env=agh_env_vars)
         return res
+
     return render

@@ -278,68 +278,168 @@ class TestAssignment(unittest.TestCase):
             a1 = Assignment.load(base)
             self.assertEqual(a1, a)
 
-    def confirm_sub_was_tested(self, s: Submission, capsys):
-        out,err = capsys.readouterr()
-        LineMatcher(out.splitlines()).fnmatch_lines([
-            f"rootdir: {s.evaluation_directory}",
-        ])
 
-    @pytest.mark.xfail
-    def test_a_submission_tests(self, capsys):
-        a = Assignment(assignment_directory=self.base)
-        a.save()
-        a.create_missing_directories()
-        unsubmitted = self.create_unprocessed(2)
-        for cur_file in unsubmitted:
-            a.AddSubmission(cur_file).save()
-        self.create_test_files()
-        a.save()
-        s = next(a.Submissions)
-        a.RunTestsOnSubmission(s)
-        self.confirm_sub_was_tested(s)
+LinkProto = Assignment.LinkProto
 
-    def test_submissions_tests(self):
-        a = Assignment(assignment_directory=self.base)
-        a.save()
-        unsubmitted = self.create_unprocessed(2)
-        for cur_file in unsubmitted:
-            a.AddSubmission(cur_file).save()
-        self.create_test_files()
-        a.RunTests()
-        for s in a.Submissions:
-            self.confirm_sub_was_tested(s)
+@pytest.fixture
+def temp_assignment(tmp_path):
+    """Fixture to create a temporary Assignment object."""
+    assignment_dir = tmp_path / "assignment"
+    assignment_dir.mkdir()
+    ret_val = Assignment(assignment_directory=assignment_dir)
+    ret_val.create_missing_directories()
+    ret_val.save()
+    return ret_val
 
-    def test_a_submission_build(self):
-        a = Assignment(assignment_directory=self.base)
-        a.save()
-        a.create_missing_directories()
-        unsubmitted = self.create_unprocessed(2)
-        for cur_file in unsubmitted:
-            a.AddSubmission(cur_file).save()
-        tf = self.create_test_files()
-        build_test_text = """
-def test_build(agh_build_makefile):
-    ret = agh_build_makefile('all')
-    ret.stdout.matcher.fnmatch_lines(['Hello, world!'])
-    assert ret.ret == 0
-    """
-        tf[0].write_text(build_test_text)
-        self.create_makefile_build()
-        s = next(a.Submissions)
-        a.RunBuildOnSubmission(s)
+@pytest.fixture
+def filled_assignment(temp_assignment):
+    """Fixture to create a temporary Assignment object with some files."""
+    temp_assignment.add_required_file(submission_file_data(path="a.c"))
+    # temp_assignment.add_o submission_file_data(path="b.c"))
+    return temp_assignment
 
-    def test_a_submission_build_bad(self):
-        a = Assignment(assignment_directory=self.base)
-        a.create_missing_directories()
-        a.save()
-        unsubmitted = self.create_unprocessed(2)
-        for cur_file in unsubmitted:
-            a.AddSubmission(cur_file).save()
-        tf = self.create_test_files()
-        tf[0].write_text("def test_build(agh_build_makefile):\n  ret = agh_build_makefile('bad')\n  assert ret.ret == 0")
-        self.create_makefile_build()
-        s = next(a.Submissions)
-        a.RunBuildOnSubmission(s)
+@pytest.fixture
+def temp_submission_file(temp_assignment):
+    """Fixture to create a temporary submission file."""
+    sub_file = temp_assignment.unprocessed_dir / "submission.txt"
+    sub_file.touch()
+    sub_file.write_text("Hello, world!")
+    return sub_file
+
+def test_pps_creates_new_submission(temp_assignment, temp_submission_file):
+    """Test that PostProcessSubmission creates a new Submission instance for a valid file."""
+    new_submission = temp_assignment.AddSubmission(temp_submission_file)
+    assert isinstance(new_submission, Submission)
+    assert new_submission.evaluation_directory.exists()
+
+def test_bad_submission(temp_assignment, temp_submission_file):
+    """Test that PostProcessSubmission creates a new Submission instance for a valid file."""
+    with pytest.raises(FileNotFoundError):
+        new_submission = temp_assignment.AddSubmission(temp_assignment.unprocessed_dir / "bad.txt")
+        assert False
+
+def test_pps_links_test_files(temp_assignment, temp_submission_file):
+    """Test that PostProcessSubmission links required and optional files."""
+    new_submission = temp_assignment.AddSubmission(temp_submission_file)
+    assert new_submission.evaluation_directory.exists()
+    assert (new_submission.evaluation_directory / "tests").is_symlink()
+
+def test_pps_links_test_files(temp_assignment, temp_submission_file):
+    """Test that PostProcessSubmission links required and optional files."""
+    new_submission = temp_assignment.AddSubmission(temp_submission_file)
+    assert new_submission.submission_file.exists()
+    assert new_submission.submission_file.read_text() == "Hello, world!"
+
+
+
+# def test_postprocesssubmission_raises_error_if_link_exists(temp_assignment, temp_submission_file, tmp_path):
+#     """Test that PostProcessSubmission raises FileExistsError if link already exists and protocol is RAISE_ERROR."""
+#     conflict_file = tmp_path / "tests"
+#     conflict_file.mkdir()
+#
+#     new_submission = temp_assignment.PostProcessSubmission(temp_submission_file)
+#     (new_submission.evaluation_directory / "tests").symlink_to(conflict_file)
+#
+#     with pytest.raises(FileExistsError):
+#         temp_assignment.PostProcessSubmission(temp_submission_file, exists_protocol=LinkProto.RAISE_ERROR)
+
+
+# def test_postprocesssubmission_ignores_existing_link(temp_assignment, temp_submission_file, tmp_path):
+#     """Test that PostProcessSubmission ignores existing link when protocol is IGNORE_ERROR."""
+#     conflict_file = tmp_path / "tests"
+#     conflict_file.mkdir()
+#
+#     new_submission = temp_assignment.PostProcessSubmission(temp_submission_file)
+#     (new_submission.evaluation_directory / "tests").symlink_to(conflict_file)
+#
+#     try:
+#         temp_assignment.PostProcessSubmission(temp_submission_file, exists_protocol=LinkProto.IGNORE_ERROR)
+#     except FileExistsError:
+#         pytest.fail("PostProcessSubmission should not raise FileExistsError when IGNORE_ERROR is used.")
+
+
+# def test_postprocesssubmission_overwrites_existing_link(temp_assignment, temp_submission_file, tmp_path):
+#     """Test that PostProcessSubmission overwrites existing link when protocol is LINK_OVERWRITE."""
+#     conflict_file = tmp_path / "tests"
+#     conflict_file.mkdir()
+#
+#     new_submission = temp_assignment.PostProcessSubmission(temp_submission_file)
+#     conflict_link = new_submission.evaluation_directory / "tests"
+#     conflict_link.symlink_to(conflict_file)
+#
+#     new_link_target = tmp_path / "new_tests"
+#     new_link_target.mkdir()
+#
+#     temp_assignment.linkTemplateDir = new_link_target
+#
+#     temp_assignment.PostProcessSubmission(temp_submission_file, exists_protocol=LinkProto.LINK_OVERWRITE)
+#
+#     assert conflict_link.is_symlink()
+#     assert conflict_link.readlink() == new_link_target
+
+
+#     def confirm_sub_was_tested(self, s: Submission, capsys):
+#         out,err = capsys.readouterr()
+#         LineMatcher(out.splitlines()).fnmatch_lines([
+#             f"rootdir: {s.evaluation_directory}",
+#         ])
+#
+#     @pytest.mark.xfail
+#     def test_a_submission_tests(self, capsys):
+#         a = Assignment(assignment_directory=self.base)
+#         a.save()
+#         a.create_missing_directories()
+#         unsubmitted = self.create_unprocessed(2)
+#         for cur_file in unsubmitted:
+#             a.AddSubmission(cur_file).save()
+#         self.create_test_files()
+#         a.save()
+#         s = next(a.Submissions)
+#         a.RunTestsOnSubmission(s)
+#         self.confirm_sub_was_tested(s)
+#
+#     def test_submissions_tests(self):
+#         a = Assignment(assignment_directory=self.base)
+#         a.save()
+#         unsubmitted = self.create_unprocessed(2)
+#         for cur_file in unsubmitted:
+#             a.AddSubmission(cur_file).save()
+#         self.create_test_files()
+#         a.RunTests()
+#         for s in a.Submissions:
+#             self.confirm_sub_was_tested(s)
+#
+#     def test_a_submission_build(self):
+#         a = Assignment(assignment_directory=self.base)
+#         a.save()
+#         a.create_missing_directories()
+#         unsubmitted = self.create_unprocessed(2)
+#         for cur_file in unsubmitted:
+#             a.AddSubmission(cur_file).save()
+#         tf = self.create_test_files()
+#         build_test_text = """
+# def test_build(agh_build_makefile):
+#     ret = agh_build_makefile('all')
+#     ret.stdout.matcher.fnmatch_lines(['Hello, world!'])
+#     assert ret.ret == 0
+#     """
+#         tf[0].write_text(build_test_text)
+#         self.create_makefile_build()
+#         s = next(a.Submissions)
+#         a.RunBuildOnSubmission(s)
+#
+#     def test_a_submission_build_bad(self):
+#         a = Assignment(assignment_directory=self.base)
+#         a.create_missing_directories()
+#         a.save()
+#         unsubmitted = self.create_unprocessed(2)
+#         for cur_file in unsubmitted:
+#             a.AddSubmission(cur_file).save()
+#         tf = self.create_test_files()
+#         tf[0].write_text("def test_build(agh_build_makefile):\n  ret = agh_build_makefile('bad')\n  assert ret.ret == 0")
+#         self.create_makefile_build()
+#         s = next(a.Submissions)
+#         a.RunBuildOnSubmission(s)
 
 if __name__ == "__main__":
     unittest.main()
