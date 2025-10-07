@@ -122,7 +122,7 @@ class DataclassJson:
 
 # Mark all fields as keyword-only so that we can load directly from JSON.
 @dataclass(kw_only=True)
-class submission_file_data(DataclassJson):
+class SubmissionFileData(DataclassJson):
     path: pathlib.Path
     title: str = ""
     type: str = "default"
@@ -166,11 +166,11 @@ class submission_file_data(DataclassJson):
 
 # Mark all fields as keyword-only so that we can load directly from JSON.
 @dataclass(kw_only=True)
-class OutputSectionData(submission_file_data):
+class OutputSectionData(SubmissionFileData):
     text: str = ""
     instructor_section: bool = False
     heading_level: int = 2
-    included_files: list[submission_file_data] = field(default_factory=list)
+    included_files: list[SubmissionFileData] = field(default_factory=list)
     included_sections: list["OutputSectionData"] = field(default_factory=list)
     only_output_if_data: bool = False
     post_script: str = ""
@@ -213,8 +213,8 @@ class AssignmentData(DataclassJson):
     _year: int = 2025
     _grade_period: str = "Fall"
     _course: str = "CSCI-340"
-    _required_files: dict[str, submission_file_data] = field(default_factory=dict)
-    _optional_files: dict[str, submission_file_data] = field(default_factory=dict)
+    _required_files: dict[str, SubmissionFileData] = field(default_factory=dict)
+    _optional_files: dict[str, SubmissionFileData] = field(default_factory=dict)
     _options: GraderOptions = field(default_factory=GraderOptions)
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -430,7 +430,7 @@ class Assignment(AssignmentData):
         # Eventually meld the user defaults with the assignment settings.
         return self._GraderOptions
 
-    def add_required_file(self, new_file: submission_file_data):
+    def add_required_file(self, new_file: SubmissionFileData):
         """Adds a new required file to the assignment.
 
         :param new_file: The new required file to add.
@@ -697,7 +697,7 @@ class Submission(submission_data):
                 os.system(f'cp "{f.absolute()}" "{self.evaluation_directory.absolute()}"')
             f.chmod(0o400)
 
-    def check_missing_files(self, assignment: Assignment) -> list[submission_file_data]:
+    def check_missing_files(self, assignment: Assignment) -> list[SubmissionFileData]:
         """Check if the submission is missing required files.
         :param assignment: The assignment this submission belongs to.
         :return: A list of missing required file names, or an empty list if the submission is missing no required files.

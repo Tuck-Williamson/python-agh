@@ -9,7 +9,7 @@ from pytest import LineMatcher
 from agh.agh_data import Assignment
 from agh.agh_data import Submission
 from agh.agh_data import AssignmentData
-from agh.agh_data import submission_file_data
+from agh.agh_data import SubmissionFileData
 
 
 class TestAssignmentData(unittest.TestCase):
@@ -46,11 +46,11 @@ class TestAssignmentData(unittest.TestCase):
                 _course="Tuck-10000",
                 # _submission_files=subm_files,
                 _required_files={
-                    "a": submission_file_data(path="a.c"),
-                    "b": submission_file_data(path="b.c"),
-                    "c": submission_file_data(path="b.h"),
+                    "a": SubmissionFileData(path="a.c"),
+                    "b": SubmissionFileData(path="b.c"),
+                    "c": SubmissionFileData(path="b.h"),
                 },
-                _optional_files={"a": submission_file_data(path="a.h"), "b": submission_file_data(path="Makefile")},
+                _optional_files={"a": SubmissionFileData(path="a.h"), "b": SubmissionFileData(path="Makefile")},
             )
             a1_dup = AssignmentData(
                 _name=a1._name,
@@ -70,11 +70,11 @@ class TestAssignmentData(unittest.TestCase):
                 _course="Tuck-10000",
                 # _submission_files=subm_files,
                 _required_files={
-                    "a": submission_file_data(path="a.c"),
-                    "b": submission_file_data(path="b.c"),
-                    "c": submission_file_data(path="b.h"),
+                    "a": SubmissionFileData(path="a.c"),
+                    "b": SubmissionFileData(path="b.c"),
+                    "c": SubmissionFileData(path="b.h"),
                 },
-                _optional_files={"a": submission_file_data(path="a.h"), "b": submission_file_data(path="Makefile")},
+                _optional_files={"a": SubmissionFileData(path="a.h"), "b": SubmissionFileData(path="Makefile")},
             )
             self.assertNotEqual(a1, a2)
             self.assertNotEqual(a1, AssignmentData())
@@ -104,11 +104,11 @@ class TestAssignmentData(unittest.TestCase):
             # self.assertNotEqual(a1, a1_ch)
 
             a1_ch = AssignmentData._from_json(a1.asdict())
-            a1_ch._required_files["c.c"] = submission_file_data(path="c.c")
+            a1_ch._required_files["c.c"] = SubmissionFileData(path="c.c")
             self.assertNotEqual(a1, a1_ch)
 
             a1_ch = AssignmentData._from_json(a1.asdict())
-            a1_ch._optional_files["c.h"] = submission_file_data(path="c.h")
+            a1_ch._optional_files["c.h"] = SubmissionFileData(path="c.h")
             self.assertNotEqual(a1, a1_ch)
 
             a1_ch = AssignmentData._from_json(a1.asdict())
@@ -131,11 +131,11 @@ class TestAssignmentData(unittest.TestCase):
                 _course="Tuck-10000",
                 # _submission_files=subm_files,
                 _required_files={
-                    "a": submission_file_data(path="a.c"),
-                    "b": submission_file_data(path="b.c"),
-                    "c": submission_file_data(path="b.h"),
+                    "a": SubmissionFileData(path="a.c"),
+                    "b": SubmissionFileData(path="b.c"),
+                    "c": SubmissionFileData(path="b.h"),
                 },
-                _optional_files={"a": submission_file_data(path="a.h"), "b": submission_file_data(path="Makefile")},
+                _optional_files={"a": SubmissionFileData(path="a.h"), "b": SubmissionFileData(path="Makefile")},
             )
 
             a1.save(file_store)
@@ -179,8 +179,8 @@ class TestAssignment(unittest.TestCase):
         a.directory = base
         a._optional_files = ["notes.md"]
         a1 = Assignment(assignment_directory=base)
-        a1.add_required_file(submission_file_data(path="main.py"))
-        a1.add_required_file(submission_file_data(path="README.md"))
+        a1.add_required_file(SubmissionFileData(path="main.py"))
+        a1.add_required_file(SubmissionFileData(path="README.md"))
 
         a1.save()
         self.assertTrue(str(base) in str(a1._do_file))
@@ -294,8 +294,8 @@ def temp_assignment(tmp_path):
 @pytest.fixture
 def filled_assignment(temp_assignment):
     """Fixture to create a temporary Assignment object with some files."""
-    temp_assignment.add_required_file(submission_file_data(path="a.c"))
-    # temp_assignment.add_o submission_file_data(path="b.c"))
+    temp_assignment.add_required_file(SubmissionFileData(path="a.c"))
+    # temp_assignment.add_o SubmissionFileData(path="b.c"))
     return temp_assignment
 
 @pytest.fixture
