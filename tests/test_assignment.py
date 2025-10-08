@@ -164,7 +164,7 @@ class TestAssignment(unittest.TestCase):
             self.assertTrue(str(base) in str(cur_dir))
 
         # None of them should exist yet
-        missing = a.get_missing_directories()
+        missing = a.getMissingDirectories()
         self.assertTrue(all(not p.exists() for p in missing))
         # Sanity: expect some dirs to be missing
         self.assertGreater(len(missing), 0)
@@ -179,8 +179,8 @@ class TestAssignment(unittest.TestCase):
         a.directory = base
         a._optional_files = ["notes.md"]
         a1 = Assignment(assignment_directory=base)
-        a1.add_required_file(SubmissionFileData(path="main.py"))
-        a1.add_required_file(SubmissionFileData(path="README.md"))
+        a1.addRequiredFile(SubmissionFileData(path="main.py"))
+        a1.addRequiredFile(SubmissionFileData(path="README.md"))
 
         a1.save()
         self.assertTrue(str(base) in str(a1._do_file))
@@ -204,31 +204,31 @@ class TestAssignment(unittest.TestCase):
         self.assertEqual(a1, a)
         a2 = Assignment.load(a1._do_file)
         self.assertEqual(a2, a)
-        a.create_missing_directories()
+        a.createMissingDirectories()
         a3 = Assignment.load(a.tests_dir)
         self.assertEqual(a3, a)
 
     def test_missing_directories(self):
         base = self.base
         a = Assignment(assignment_directory=base)
-        self.assertGreater(len(a.get_missing_directories()), 0)
-        self.assertTrue(False not in [cur_dir in a._directories for cur_dir in a.get_missing_directories()])
+        self.assertGreater(len(a.getMissingDirectories()), 0)
+        self.assertTrue(False not in [cur_dir in a._directories for cur_dir in a.getMissingDirectories()])
 
     def test_create_missing_directories_and_readmes(self):
         base = self.base
         a = Assignment(assignment_directory=base)
 
         # Initially, none should exist
-        self.assertGreater(len(a.get_missing_directories()), 0)
+        self.assertGreater(len(a.getMissingDirectories()), 0)
 
-        a.create_missing_directories()
+        a.createMissingDirectories()
 
         # All required directories should now exist
-        self.assertEqual(a.get_missing_directories(), [])
+        self.assertEqual(a.getMissingDirectories(), [])
 
     def create_test_files(self):
         self.assignment = Assignment(self.base)
-        self.assignment.create_missing_directories()
+        self.assignment.createMissingDirectories()
         test_base = self.assignment.tests_dir
         # Create test files
         self.test_files = [
@@ -248,7 +248,7 @@ class TestAssignment(unittest.TestCase):
 
     def create_unprocessed(self, num_unproc:int, ext:str = ".txt") -> list[Path]:
         a = Assignment(assignment_directory=self.base)
-        a.create_missing_directories()
+        a.createMissingDirectories()
         ret_val = [(a.unprocessed_dir / f"{idx}{ext}") for idx in range(num_unproc)]
         for cur_file in ret_val:
             cur_file.touch()
@@ -256,7 +256,7 @@ class TestAssignment(unittest.TestCase):
 
     def create_makefile_build(self):
         a = Assignment(assignment_directory=self.base)
-        a.create_missing_directories()
+        a.createMissingDirectories()
         makefile = a.templateDir / "Makefile"
         makefile.touch()
         makefile.write_text("all:\n  echo 'Hello, world!'\nbad: noexist.c\n\tgcc -o bad noexist.c")
@@ -267,7 +267,7 @@ class TestAssignment(unittest.TestCase):
         # self.base = Path(self.td.name)
         base = self.base
         a = Assignment(assignment_directory=self.base)
-        a.create_missing_directories()
+        a.createMissingDirectories()
         unproc = self.create_unprocessed(5)
         cur_num_subm = 0
         for cur_file in unproc:
@@ -287,14 +287,14 @@ def temp_assignment(tmp_path):
     assignment_dir = tmp_path / "assignment"
     assignment_dir.mkdir()
     ret_val = Assignment(assignment_directory=assignment_dir)
-    ret_val.create_missing_directories()
+    ret_val.createMissingDirectories()
     ret_val.save()
     return ret_val
 
 @pytest.fixture
 def filled_assignment(temp_assignment):
     """Fixture to create a temporary Assignment object with some files."""
-    temp_assignment.add_required_file(SubmissionFileData(path="a.c"))
+    temp_assignment.addRequiredFile(SubmissionFileData(path="a.c"))
     # temp_assignment.add_o SubmissionFileData(path="b.c"))
     return temp_assignment
 
@@ -388,7 +388,7 @@ def test_pps_links_test_files(temp_assignment, temp_submission_file):
 #     def test_a_submission_tests(self, capsys):
 #         a = Assignment(assignment_directory=self.base)
 #         a.save()
-#         a.create_missing_directories()
+#         a.createMissingDirectories()
 #         unsubmitted = self.create_unprocessed(2)
 #         for cur_file in unsubmitted:
 #             a.AddSubmission(cur_file).save()
@@ -412,7 +412,7 @@ def test_pps_links_test_files(temp_assignment, temp_submission_file):
 #     def test_a_submission_build(self):
 #         a = Assignment(assignment_directory=self.base)
 #         a.save()
-#         a.create_missing_directories()
+#         a.createMissingDirectories()
 #         unsubmitted = self.create_unprocessed(2)
 #         for cur_file in unsubmitted:
 #             a.AddSubmission(cur_file).save()
@@ -430,7 +430,7 @@ def test_pps_links_test_files(temp_assignment, temp_submission_file):
 #
 #     def test_a_submission_build_bad(self):
 #         a = Assignment(assignment_directory=self.base)
-#         a.create_missing_directories()
+#         a.createMissingDirectories()
 #         a.save()
 #         unsubmitted = self.create_unprocessed(2)
 #         for cur_file in unsubmitted:

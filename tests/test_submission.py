@@ -111,7 +111,7 @@ class TestSubmission(unittest.TestCase):
         base = self.base
         self.file_store = self.base
         self.assignment = Assignment(base)
-        self.assignment.create_missing_directories()
+        self.assignment.createMissingDirectories()
         self.sub_file = self.assignment.unprocessed_dir / "test_submission.txt"
         self.sub_file.touch()
         self.sub_data = submission_data(

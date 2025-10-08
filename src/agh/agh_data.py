@@ -317,7 +317,7 @@ class Assignment(AssignmentData):
         self._directories.add(self.linkTemplateDir)
         self.assignmentDir = assignment_dir / "description"
         self._directories.add(self.assignmentDir)
-        self.tests_dir = assignment_dir / "how_to_evaulate"
+        self.tests_dir = assignment_dir / "tests"
         self._directories.add(self.tests_dir)
 
     @classmethod
@@ -333,9 +333,11 @@ class Assignment(AssignmentData):
         :return: The loaded assignment object.
         """
         if filepath.exists() and filepath.is_dir():
+            orig_filepath = filepath
+            filepath = filepath.absolute()
             filepath = findFileInParents(filepath, cls.ASSIGNMENT_FILE_NAME)
             if filepath is None:
-                raise FileNotFoundError(f"Could not find assignment JSON file in {filepath} or any of its parents.")
+                raise FileNotFoundError(f"Could not find assignment JSON file in {orig_filepath} or any of its parents.")
 
         if filepath.exists() and filepath.is_file():
             data = json.loads(filepath.read_text())
@@ -384,7 +386,7 @@ class Assignment(AssignmentData):
 
         def all_linked_files() -> Generator[Path]:
             """Internal generator to get all the files to be linked."""
-            yield ret_val.evaluation_directory / "tests"
+            yield self.tests_dir
             for link_item in self.linkTemplateDir.iterdir():
                 yield link_item
             for link_item in self._optional_files.values():
@@ -414,7 +416,7 @@ class Assignment(AssignmentData):
                     case _:
                         raise NotImplementedError("New existing link protocol added, but code not added")
 
-            link_tgt.symlink_to(link_item, target_is_directory=link_item.is_dir())
+            link_tgt.symlink_to(link_item.absolute(), target_is_directory=link_item.is_dir())
 
         return ret_val
 
@@ -425,6 +427,7 @@ class Assignment(AssignmentData):
         :rtype: "Submission"
         """
         ret_val = Submission.new(self, submission_file=submission_file)
+        ret_val.save()
         return self.PostProcessSubmission(ret_val, exists_protocol=self.LinkProto.RAISE_ERROR)
 
     # def __pytest_cmd(self):
@@ -452,7 +455,7 @@ class Assignment(AssignmentData):
         # Eventually meld the user defaults with the assignment settings.
         return self._GraderOptions
 
-    def addRequiredFile(self, new_file: SubmissionFileData):
+    def addRequiredFile(self, new_file: SubmissionFileData) -> "Assignment":
         """Adds a new required file to the assignment.
 
         :param new_file: The new required file to add.
@@ -462,6 +465,13 @@ class Assignment(AssignmentData):
         """
         self._required_files[str(new_file.path)] = new_file
         return self
+
+    def addOptionalFile(self, new_file: SubmissionFileData) -> "Assignment":
+        """Adds a new optional file to the assignment.
+
+        :param new_file: The new optional file to add.
+
+        """
 
     @property
     def year(self):
@@ -489,61 +499,61 @@ class Assignment(AssignmentData):
         """Sets the course name/number for the assignment."""
         self._course = value
 
-    def get_missing_directories(self) -> list[pathlib.Path]:
+    def getMissingDirectories(self) -> list[pathlib.Path]:
         """Get a list of missing directories for the assignment."""
         return [d for d in self._directories if not d.exists()]
 
-    def get_readme_files(self):
-        """Get a list of README files that explain the directory structure."""
-        return [
-            (
-                self.oaks_named_dir / "README.txt",
-                f"""This {self.oaks_named_dir.relative_to(self._directory)} directory contains the PDFs for the
-                 assignment that are named after the student's name as
-                 oaks expects them so that they can be zipped and batch uploaded to oaks.
-                 They are de-anonimized, symbolic links to the instructor edited pdfs from the ready_for_oaks
-                 directory for each submission.""",
-            ),
-            (
-                self.complete_eval_dir / "README.txt",
-                f"""This {self.complete_eval_dir.relative_to(self._directory)} directory contains the PDFs (with
-                 anonymous file names) for the assignment that are ready
-                 for the instructor to review.
-                 They are symbolic links to the original PDFs in the evaluation directory for each submission.""",
-            ),
-            (
-                self.oaks_ready_dir / "README.txt",
-                f"""This {self.oaks_ready_dir.relative_to(self._directory)} directory contains copies of the PDFs
-                 from the evaluation
-                directory for each submission.
-                The instructor can edit them and the original PDFs are still stored in the evaluation directory.""",
-            ),
-            (
-                self._directory / "pdfs" / "README.txt",
-                f"""This {self.complete_eval_dir.parent.relative_to(self._directory)} directory contains
-                 sub-directories with PDFs for each student.
+    # def get_readme_files(self):
+    #     """Get a list of README files that explain the directory structure."""
+    #     return [
+    #         (
+    #             self.oaks_named_dir / "README.txt",
+    #             f"""This {self.oaks_named_dir.relative_to(self._directory)} directory contains the PDFs for the
+    #              assignment that are named after the student's name as
+    #              oaks expects them so that they can be zipped and batch uploaded to oaks.
+    #              They are de-anonimized, symbolic links to the instructor edited pdfs from the ready_for_oaks
+    #              directory for each submission.""",
+    #         ),
+    #         (
+    #             self.complete_eval_dir / "README.txt",
+    #             f"""This {self.complete_eval_dir.relative_to(self._directory)} directory contains the PDFs (with
+    #              anonymous file names) for the assignment that are ready
+    #              for the instructor to review.
+    #              They are symbolic links to the original PDFs in the evaluation directory for each submission.""",
+    #         ),
+    #         (
+    #             self.oaks_ready_dir / "README.txt",
+    #             f"""This {self.oaks_ready_dir.relative_to(self._directory)} directory contains copies of the PDFs
+    #              from the evaluation
+    #             directory for each submission.
+    #             The instructor can edit them and the original PDFs are still stored in the evaluation directory.""",
+    #         ),
+    #         (
+    #             self._directory / "pdfs" / "README.txt",
+    #             f"""This {self.complete_eval_dir.parent.relative_to(self._directory)} directory contains
+    #              sub-directories with PDFs for each student.
+    #
+    #             The {self.complete_eval_dir.name} directory contains links to the PDFs in the evaluation directory for
+    #             each submission. The instructor SHOULD NOT edit the PDFs in this directory.
+    #
+    #             The {self.oaks_ready_dir.name} directory should be filled with instructor marked-up copies of the PDFs
+    #             from the evaluation directory for each submission.
+    #             The instructor SHOULD put the completed pdfs in this directory.
+    #
+    #             I zip these files up initially and copy them to my iPad, so that I can grade them.
+    #             After completing the grades I overwrite the files in the evaluation directory with the completed pdfs
+    #             from my iPad.
+    #
+    #             The {self.oaks_named_dir.name} directory contains the PDFs for the assignment that are named after
+    #             the student's name as oaks expects them so that they can be zipped and batch uploaded to oaks.
+    #             After putting my evaluated pdfs in the {self.oaks_ready_dir.name} directory, I zip them up and upload
+    #             them to oaks.""",
+    #         ),
+    #     ]
 
-                The {self.complete_eval_dir.name} directory contains links to the PDFs in the evaluation directory for
-                each submission. The instructor SHOULD NOT edit the PDFs in this directory.
-
-                The {self.oaks_ready_dir.name} directory should be filled with instructor marked-up copies of the PDFs
-                from the evaluation directory for each submission.
-                The instructor SHOULD put the completed pdfs in this directory.
-
-                I zip these files up initially and copy them to my iPad, so that I can grade them.
-                After completing the grades I overwrite the files in the evaluation directory with the completed pdfs
-                from my iPad.
-
-                The {self.oaks_named_dir.name} directory contains the PDFs for the assignment that are named after
-                the student's name as oaks expects them so that they can be zipped and batch uploaded to oaks.
-                After putting my evaluated pdfs in the {self.oaks_ready_dir.name} directory, I zip them up and upload
-                them to oaks.""",
-            ),
-        ]
-
-    def create_missing_directories(self):
+    def createMissingDirectories(self):
         """Create missing directories for the assignment."""
-        for d in self.get_missing_directories():
+        for d in self.getMissingDirectories():
             d.mkdir(exist_ok=True, parents=True)
 
         # readmes = self.get_readme_files()
@@ -628,9 +638,11 @@ class Submission(submission_data):
         :return: The loaded assignment object.
         """
         if filepath.exists() and filepath.is_dir():
+            orig_filepath = filepath
+            filepath = filepath.absolute()
             filepath = findFileInParents(filepath, cls.SUBMISSION_FILE_NAME)
             if filepath is None:
-                raise FileNotFoundError(f"Could not find submission JSON file in {filepath} or any of its parents.")
+                raise FileNotFoundError(f"Could not find submission JSON file in {orig_filepath} or any of its parents.")
 
         if filepath.exists() and filepath.is_file():
             data = json.loads(filepath.read_text())
@@ -664,7 +676,7 @@ class Submission(submission_data):
                     anon_name = submission_file.stem
 
         evaluation_directory = assignment.eval_dir / anon_name
-        evaluation_directory.mkdir(exist_ok=True)
+        evaluation_directory.mkdir(exist_ok=True, parents=True)
 
         # This is the directory where the submission files are stored.
         as_submitted_dir = evaluation_directory / cls.AS_SUBMITTED_DIR_NAME

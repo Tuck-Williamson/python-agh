@@ -116,7 +116,7 @@
 # def get_submission_fixture(pytester):
 #     a = Assignment(pytester.path)
 #     a.save()
-#     a.create_missing_directories()
+#     a.createMissingDirectories()
 #     sub_file = a.unprocessed_dir / "1234-1231 - Tuck Williamson - September 30 23:29 - filename.c"
 #     sub_file.touch()
 #     s = a.AddSubmission(sub_file)
