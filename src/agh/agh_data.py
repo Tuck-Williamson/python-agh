@@ -161,7 +161,7 @@ class SubmissionFileData(DataclassJson):
         if not self.path.exists():
             self.path.touch()
 
-        hdr_txt = "#" * heading_level + self.title + self.sectionAttr
+        hdr_txt = "#" * heading_level + " " + self.title + self.sectionAttr
         return f"\n\n{self.description}\n\n{hdr_txt}\n\n```{{.{self.type}}}\n{{{{< include {self.path} >}}}}\n```\n\n"
 
 
@@ -191,8 +191,9 @@ class OutputSectionData(SubmissionFileData):
         if not self.hasData and self.only_output_if_data:
             return ""
         inc_file_txt = "\n\n".join([cur_inc_file.asQmdSection(self.heading_level + 1) for cur_inc_file in self.included_files])
-        inc_sec_txt = "\n\n".join([cur_inc_sec.asQmdSection() for cur_inc_sec in self.included_files])
-        return f"{super().asQmdSection(self.heading_level)}\n\n{inc_file_txt}\n\n{inc_sec_txt}\n\n{self.post_script}"
+        inc_sec_txt = "\n\n".join([cur_inc_sec.asQmdSection() for cur_inc_sec in self.included_sections])
+        pre = "#" * self.heading_level + f" {self.title} {self.sectionAttr}\n\n{self.description}\n\n{self.text}"
+        return f"{pre}\n\n{inc_file_txt}\n\n{inc_sec_txt}\n\n{self.post_script}"
 
 
 # Mark all fields as keyword-only so that we can load directly from JSON.
@@ -205,6 +206,8 @@ class GraderOptions(DataclassJson):
     """
 
     anonymize_names: bool = field(default=True)
+    output_files: list[str] = field(default_factory=lambda : list(['index.pdf']))
+    output_template_name: str = "index.qmd"
 
 
 # Mark all fields as keyword-only so that we can load directly from JSON.
@@ -321,7 +324,7 @@ class Assignment(AssignmentData):
         self._directories.add(self.tests_dir)
 
     @classmethod
-    def load(cls, filepath: pathlib.Path):
+    def load(cls, filepath: pathlib.Path | None = None):
         """Load an assignment from a JSON file or a directory.
 
         These objects are stored in JSON files in the same directory as the assignment.
@@ -332,6 +335,9 @@ class Assignment(AssignmentData):
         :raises FileNotFoundError: If the file or directory does not exist.
         :return: The loaded assignment object.
         """
+        if filepath is None:
+            filepath = pathlib.Path.cwd()
+
         if filepath.exists() and filepath.is_dir():
             orig_filepath = filepath
             filepath = filepath.absolute()
@@ -417,6 +423,19 @@ class Assignment(AssignmentData):
                         raise NotImplementedError("New existing link protocol added, but code not added")
 
             link_tgt.symlink_to(link_item.absolute(), target_is_directory=link_item.is_dir())
+
+        #Now start linking the output stuff together.
+        for output_file in self._options.output_files:
+            pdf_f = ret_val.evaluation_directory / output_file
+            pdf_ar = self.complete_eval_dir / (ret_val.evaluation_directory.name + '.pdf')
+            pdf_on = self.oaks_named_dir / (ret_val.original_name + '.pdf')
+            pdf_cpl = self.oaks_ready_dir / pdf_ar.name
+            # print(pdf_ar, pdf_on, pdf_cpl)
+            if not pdf_ar.exists():
+                pdf_ar.symlink_to(pdf_f.relative_to(pdf_ar.parent, walk_up=True))
+            pdf_on.unlink()
+            if not pdf_on.exists():
+                pdf_on.symlink_to(pdf_cpl.relative_to(pdf_on.parent, walk_up=True))
 
         return ret_val
 
@@ -626,7 +645,7 @@ class Submission(submission_data):
         super().save(self.evaluation_directory / self.SUBMISSION_FILE_NAME)
 
     @classmethod
-    def load(cls, filepath: pathlib.Path):
+    def load(cls, filepath: pathlib.Path | None = None):
         """Load a submission from a JSON file or a directory.
 
         These objects are stored in JSON files in the same directory as the assignment.
@@ -637,6 +656,9 @@ class Submission(submission_data):
         :raises FileNotFoundError: If the file or directory does not exist.
         :return: The loaded assignment object.
         """
+        if filepath is None:
+            filepath = pathlib.Path.cwd()
+
         if filepath.exists() and filepath.is_dir():
             orig_filepath = filepath
             filepath = filepath.absolute()
@@ -707,6 +729,10 @@ class Submission(submission_data):
         """
         super().__post_init__()
 
+    def fix(self, assignment: Assignment):
+        """Try to fix errors in the submission directory."""
+        self.__post_process_new__(assignment)
+
     def __post_process_new__(self, assignment: Assignment, base_file_name: str | None = None):
         """Post-process a brand-new submission.
         This method should be overridden by subclasses to perform any post-processing required for brand-new
@@ -727,7 +753,7 @@ class Submission(submission_data):
         # Make the submission file(s) private and readonly.
         # Also copy them to the evaluation directory if they are part of the required files.
         for f in self.as_submitted_dir.iterdir():
-            if f.name in assignment.required_files.values():
+            if f.name in assignment.required_files.keys() or f.name in assignment._optional_files.keys():
                 os.system(f'cp "{f.absolute()}" "{self.evaluation_directory.absolute()}"')
             f.chmod(0o400)
 
@@ -750,8 +776,38 @@ class Submission(submission_data):
         Returns:
             str: Anonymous name for the submission
         """
-        return anonimizer.anonymize(submission_file.name, assignment.name, assignment.year, assignment.grade_period, assignment.course)
+        return anonimizer.anonymize(submission_file.name, assignment.name, str(assignment.year), assignment.grade_period, assignment.course)
 
+    @property
+    def has_output(self)->bool:
+        """Check if the submission has output files."""
+        assign = Assignment.load()
+        for output_file in assign.GraderOptions.output_files:
+            output_file = self.evaluation_directory / output_file
+            if not output_file.exists():
+                return False
+        return True
+
+    @property
+    def has_error(self)->None|list[str]:
+        """Check if the submission has errors."""
+        if self.metadata.get("errors", None) is not None:
+            return self.metadata["errors"]
+        return None
+
+    def add_error(self, txt_or_markdown: str):
+        """Add an error to the submission."""
+        self.metadata["errors"] = self.metadata.get("errors", []).append(txt_or_markdown)
+
+    def has_warnings(self)->None|list[str]:
+        """Check if the submission has warnings."""
+        if self.metadata.get("warnings", None) is not None:
+            return self.metadata["warnings"]
+        return None
+
+    def add_warning(self, txt_or_markdown: str):
+        """Add a warning to the submission."""
+        self.metadata["warnings"] = self.metadata.get("warnings", []).append(txt_or_markdown)
 
 # class TarSubmission(Submission):
 #   def post_process_new(self, assignment: Assignment):

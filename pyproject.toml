@@ -46,6 +46,9 @@ requires-python = ">=3.9"
 dependencies = [
     "pytest>=8.4.2",
     "pytest-shell-utilities>=1.9.7",
+    "rich>=14.2.0",
+    "argcomplete",
+    "rich-argparse",
 ]
 
 [project.optional-dependencies]

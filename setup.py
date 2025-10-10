@@ -22,4 +22,5 @@ setup(
     py_modules=[path.stem for path in Path("src").glob("*.py")],
     include_package_data=True,
     zip_safe=False,
+    # install_requires=["rich-argparse"],
 )
