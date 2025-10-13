@@ -21,8 +21,10 @@ import datetime
 import functools
 import sys
 from pathlib import Path
+from urllib import parse
 
 import argcomplete
+import rich.table
 from rich_argparse import RichHelpFormatter
 
 from agh import Assignment
@@ -30,6 +32,7 @@ from agh import Submission
 from agh import __version__
 from agh import main_console
 from agh.agh_data import GraderOptions
+from agh.agh_data import SubmissionFileData
 
 console = main_console
 print = console.print
@@ -115,6 +118,7 @@ subparsers = parser.add_subparsers(dest="command", help="Assignment/Submission/e
 
 # Status command (default)
 status_parser = subparsers.add_parser("status", help="Show status of all elements of the assignment.")
+status_parser.add_argument("-d", "--details", action="store_true", help="Show debugging details.", default=False)
 
 assignment_sub_parser = subparsers.add_parser("assignment", help="Assignment commands", formatter_class=RichHelpFormatter)
 assignment_subparsers = assignment_sub_parser.add_subparsers(dest="assignment_command", help="Assignment commands")
@@ -146,8 +150,9 @@ assign_add_optional_parser.add_argument("files", nargs="+", help="Optional file 
 assign_add_optional_parser.add_argument("-d", "--description", help="Description of the optional files", type=str, default="")
 assign_add_required_parser.add_argument("-t", "--title", help="Title of the optional files", type=str, default="")
 assign_add_required_parser.add_argument(
-    "-i", "--include-in-output", help="Include in output", action=argparse.BooleanOptionalAction, default=False
+    "-i", "--include-in-output", help="Include in output", action=argparse.BooleanOptionalAction, default=True
 )
+
 
 sub_subparser = subparsers.add_parser("submission", help="Submission commands", formatter_class=RichHelpFormatter)
 sub_subparsers = sub_subparser.add_subparsers(dest="sub_command", help="Submission commands")
@@ -183,6 +188,54 @@ def display_assignment_info(cli_args: argparse.Namespace):
         console.log(assignment, submissions)
 
 
+def display_submission_info(cli_args: argparse.Namespace, submission: Submission, assignment: Assignment):
+    console.print("[error] Add links to the editable output files.")
+    console.rule("[bold dark_green]Submission Info")
+    submission_table = rich.table.Table(title="Submissions")
+    submission_table.add_column("Err", justify="center")
+    submission_table.add_column("Warn", justify="center")
+    submission_table.add_column("Output", justify="center")
+    submission_table.add_column("Name", justify="left")
+
+    for submission in assignment.Submissions:
+        warnings = submission.warnings
+        has_warnings = warnings is not None and len(warnings) > 0
+        if warnings:
+            warning_str = "\n".join(warnings)
+            warnings = f"[link {parse.quote(warning_str)}] :exclamation: [/]"
+        else:
+            warnings = ":thumbsup:"
+
+        errors = submission.errors
+        has_errors = errors is not None and len(errors) > 0
+        if errors:
+            errors_str = "\n".join(errors)
+            errors = f"[link {parse.quote(errors_str)}] :x: [/]"
+        else:
+            errors = ":+1:"
+
+        output = submission.main_output_file
+        has_output = output is not None
+        if output:
+            output = f"[link file://{output}] :notebook: [/]"
+        else:
+            output = ":-1:"
+
+        sub_color = "green"
+        match (has_errors, has_warnings, has_output):
+            case (True, _, _):
+                sub_color = "red"
+            case (False, True, _):
+                sub_color = "orange"
+            case (False, False, False):
+                sub_color = "yellow"
+            case (False, False, True):
+                sub_color = "green"
+        submission_table.add_row(errors, warnings, output, f"[bold {sub_color}] {submission.evaluation_directory.name} [/]")
+
+    console.print(submission_table)
+
+
 def get_current_assignment() -> Assignment:
     try:
         ret_val = Assignment.load()
@@ -190,6 +243,34 @@ def get_current_assignment() -> Assignment:
     except FileNotFoundError:
         console.print("[error]No assignment found.")
         sys.exit(1)
+
+
+def handleSubmissionCmd(cli_args: argparse.Namespace):
+    """Handle the submission command sub-command processing.
+    This should be called when command is "submission".
+    """
+    match cli_args.sub_command:
+        case "add":
+            with console.status(f"Adding submission{'s' if len(cli_args.files) > 1 else ''}...", spinner="dots"):
+                console.print("Loading assignment.")
+                assignment = get_current_assignment()
+                console.print(f"Adding {len(cli_args.files)} submissions.")
+                for cur_file in cli_args.files:
+                    console.print(f"Adding {cur_file}")
+                    assignment.AddSubmission(cur_file).save()
+        case "fix":
+            with console.status("Fixing submissions...", spinner="dots"):
+                console.print("Loading assignment.")
+                assignment = get_current_assignment()
+                console.print(f"Fixing {len(cli_args.files)} submissions.")
+                for cur_file in cli_args.files:
+                    console.print(f"Fixing {cur_file}")
+                    cur_subm_dir = assignment.eval_dir / cur_file
+                    if not cur_subm_dir.exists():
+                        console.print(f"[error]No submission directory found for {cur_file}.")
+                    cur_subm = Submission.load(cur_subm_dir)
+                    cur_subm.fix(assignment=assignment)
+                    assignment.PostProcessSubmission(cur_subm).save()
 
 
 def run(args=None):
@@ -202,6 +283,11 @@ def run(args=None):
     console.rule(f"[b i]agh[/] - Assignment Grading Helper - Version: [b i]{__version__}")
     # console.print(f'[purple bold underline]agh[/] version [white]{__version__}')
     match cli_args.command:
+        case "status":
+            assignment = get_current_assignment()
+            display_assignment_info(cli_args)
+            display_submission_info(cli_args, assignment)
+
         case "assignment":
             match cli_args.assignment_command:
                 case "new":
@@ -227,33 +313,71 @@ def run(args=None):
                         console.print(f'[bold green]Assignment "{new_assignment.name}" created successfully.')
                 case "info":
                     display_assignment_info(cli_args)
+                case "add-required":
+                    assignment = get_current_assignment()
+                    if len(cli_args.files) > 1 and (len(cli_args.title) or len(cli_args.description)):
+                        console.log("[error]Cannot specify a title or description when adding multiple files.")
+
+                    for cur_file in cli_args.files:
+                        assignment.addOptionalFile(
+                            SubmissionFileData(
+                                path=Path(cur_file),
+                                title=cli_args.title,
+                                description=cli_args.description,
+                                include_in_output=cli_args.include_in_output,
+                            )
+                        )
+                        console.print(f"[bold green]Added required file '{cur_file}'")
+                    assignment.save()
                 case _:
                     console.log(cli_args)
         case "submission":
-            match cli_args.sub_command:
-                case "add":
-                    with console.status(f"Adding submission{'s' if len(cli_args.files) > 1 else ''}...", spinner="dots"):
-                        console.print("Loading assignment.")
-                        assignment = get_current_assignment()
-                        console.print(f"Adding {len(cli_args.files)} submissions.")
-                        for cur_file in cli_args.files:
-                            console.print(f"Adding {cur_file}")
-                            assignment.AddSubmission(cur_file).save()
-                case "fix":
-                    with console.status("Fixing submissions...", spinner="dots"):
-                        console.print("Loading assignment.")
-                        assignment = get_current_assignment()
-                        console.print(f"Fixing {len(cli_args.files)} submissions.")
-                        for cur_file in cli_args.files:
-                            console.print(f"Fixing {cur_file}")
-                            cur_subm_dir = assignment.eval_dir / cur_file
-                            if not cur_subm_dir.exists():
-                                console.print(f"[error]No submission directory found for {cur_file}.")
-                            cur_subm = Submission.load(cur_subm_dir)
-                            cur_subm.fix(assignment=assignment)
-                            assignment.PostProcessSubmission(cur_subm).save()
+            handleSubmissionCmd(cli_args)
 
         case _:
             console.log(cli_args)
     # print(start(args))
     parser.exit(0)
+
+
+# todo: create custom url scheme so I can run things from links in the output.
+#   To create a custom URL scheme in Ubuntu that executes a command in the terminal, you need to define a desktop entry for the scheme and create a script to handle the URL.
+#   1. Create a Handler Script:
+#   First, create a script that will receive the custom URL and execute the desired command. For example, let's create a script named my-custom-handler.sh in your home directory:
+#   Code
+#   >>>
+#   #!/bin/bash
+#   # Extract the command from the URL (e.g., mycommand://echo%20hello)
+#   # Replace 'mycommand://' with your desired scheme
+#   COMMAND=$(echo "$1" | sed 's/^mycommand:\/\///')
+#   # Decode URL-encoded characters (e.g., %20 to space)
+#   COMMAND=$(echo -e "$(echo "$COMMAND" | sed 's/+/ /g;s/%\(..\)/\\x\1/g')")
+#   # Open a new terminal and execute the command
+#   gnome-terminal -- bash -c "$COMMAND; exec bash"
+#   # Or use xterm, konsole, etc., depending on your terminal emulator
+#   # xterm -e "$COMMAND"
+#   <<<
+#   Make the script executable:
+#   > chmod +x ~/my-custom-handler.sh
+#   2. Create a Desktop Entry:
+#   Next, create a .desktop file to define your custom URL scheme. Create a file named mycommand-handler.desktop in ~/.local/share/applications/:
+#   Code
+#   >>>
+#   [Desktop Entry]
+#   Name=My Custom Command Handler
+#   Exec=/home/your_username/my-custom-handler.sh %u
+#   Terminal=false
+#   Type=Application
+#   MimeType=x-scheme-handler/mycommand;
+#   Replace /home/your_username/my-custom-handler.sh with the actual path to your script.
+#   3. Update MIME Types Database:
+#   Update the system's MIME types database to recognize your new scheme:
+#   Code
+#   > sudo update-desktop-database
+#   I THINK that you can just use `update-desktop-database` for user only change.
+#   4. Test the Custom URL Scheme:
+#   Now, you can test your custom URL scheme. Open your web browser or any application that supports opening URLs and enter a URL like:
+#   Code
+#   >>>
+#   mycommand://echo%20hello
+#   This should launch a new terminal window and execute the echo hello command. You can replace echo%20hello with any URL-encoded command you wish to run.

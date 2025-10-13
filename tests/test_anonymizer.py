@@ -1,19 +1,19 @@
 # Python
 import unittest
 
-import agh.anonimizer as anonimizer
+import agh.anonymizer as anonymizer
 
 
 class TestAnonymize(unittest.TestCase):
     def test_deterministic(self):
-        out1 = anonimizer.anonymize(
+        out1 = anonymizer.anonymize(
             submission_file_name="alice.txt",
             assignment_name="HW1",
             assignment_year="2025",
             assignment_semester="Fall",
             assignment_course="CS101",
         )
-        out2 = anonimizer.anonymize(
+        out2 = anonymizer.anonymize(
             submission_file_name="alice.txt",
             assignment_name="HW1",
             assignment_year="2025",
@@ -23,7 +23,7 @@ class TestAnonymize(unittest.TestCase):
         self.assertTrue(out1 == out2, "anonymize should be deterministic for identical inputs")
 
     def test_changes_with_inputs(self):
-        base = anonimizer.anonymize(
+        base = anonymizer.anonymize(
             submission_file_name="alice.txt",
             assignment_name="HW1",
             assignment_year="2025",
@@ -31,7 +31,7 @@ class TestAnonymize(unittest.TestCase):
             assignment_course="CS101",
         )
 
-        changed_file = anonimizer.anonymize(
+        changed_file = anonymizer.anonymize(
             submission_file_name="alice2.txt",
             assignment_name="HW1",
             assignment_year="2025",
@@ -40,7 +40,7 @@ class TestAnonymize(unittest.TestCase):
         )
         self.assertNotEqual(base, changed_file, "changing submission_file_name should change output")
 
-        changed_course = anonimizer.anonymize(
+        changed_course = anonymizer.anonymize(
             submission_file_name="alice.txt",
             assignment_name="HW1",
             assignment_year="2025",
@@ -49,7 +49,7 @@ class TestAnonymize(unittest.TestCase):
         )
         self.assertNotEqual(base, changed_course, "changing assignment_course should change output")
 
-        changed_prefix = anonimizer.anonymize(
+        changed_prefix = anonymizer.anonymize(
             submission_file_name="alice.txt",
             assignment_name="HW1",
             assignment_year="2025",
@@ -60,7 +60,7 @@ class TestAnonymize(unittest.TestCase):
         self.assertNotEqual(base, changed_prefix, "changing prefix should change output")
 
     def test_output_format(self):
-        out = anonimizer.anonymize(
+        out = anonymizer.anonymize(
             submission_file_name="alice.txt",
             assignment_name="HW1",
             assignment_year="2025",

@@ -325,7 +325,7 @@ def anonymize(
     assignment_course: str
         Course identifier for the assignment (e.g., course code).
     prefix: str, optional
-        A customizable prefix used in generating the hash. Default is 'edu.cofc'.
+        A customizable prefix used in generating the hash. The default is 'edu.cofc'.
 
     Returns:
     str
@@ -333,5 +333,5 @@ def anonymize(
         information.
     """
     full_name = f"{prefix}.{assignment_year}.{assignment_semester}.{assignment_course}.{assignment_name}-{submission_file_name}"
-    anonName = hh.humanize(md5(full_name.encode(errors="xmlcharrefreplace")).hexdigest())
-    return anonName
+    anon_name = hh.humanize(md5(full_name.encode(errors="xmlcharrefreplace")).hexdigest())
+    return anon_name

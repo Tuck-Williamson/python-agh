@@ -8,7 +8,7 @@ import pytest
 
 from agh.agh_data import Assignment
 from agh.agh_data import Submission
-from agh.agh_data import submission_data
+from agh.agh_data import SubmissionData
 
 
 class TestSubmissionData(unittest.TestCase):
@@ -20,7 +20,7 @@ class TestSubmissionData(unittest.TestCase):
         self.sub_file = self.base / "subfile.tar.gz"
         self.sub_file.touch()
 
-    def new_sub(self, **kwlist) -> submission_data:
+    def new_sub(self, **kwlist) -> SubmissionData:
         if "submission_file" not in kwlist.keys():
             kwlist["submission_file"] = self.sub_file
         if "evaluation_directory" not in kwlist.keys():
@@ -30,7 +30,7 @@ class TestSubmissionData(unittest.TestCase):
         if "original_name" not in kwlist.keys():
             kwlist["original_name"] = "original_name.txt"
 
-        return submission_data(**kwlist)
+        return SubmissionData(**kwlist)
 
     def tearDown(self):
         super().tearDown()
@@ -99,7 +99,7 @@ class TestSubmissionData(unittest.TestCase):
             )
 
             s1.save(file_store)
-            s1_loaded = submission_data.load(file_store)
+            s1_loaded = SubmissionData.load(file_store)
             self.assertEqual(s1, s1_loaded)
 
 
@@ -114,7 +114,7 @@ class TestSubmission(unittest.TestCase):
         self.assignment.createMissingDirectories()
         self.sub_file = self.assignment.unprocessed_dir / "test_submission.txt"
         self.sub_file.touch()
-        self.sub_data = submission_data(
+        self.sub_data = SubmissionData(
             submission_file=self.sub_file, evaluation_directory=self.base, anon_name="test", original_name="bob.tar.gz"
         )
 

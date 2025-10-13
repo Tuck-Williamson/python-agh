@@ -257,7 +257,7 @@ class TestAssignment(unittest.TestCase):
     def create_makefile_build(self):
         a = Assignment(assignment_directory=self.base)
         a.createMissingDirectories()
-        makefile = a.templateDir / "Makefile"
+        makefile = a.template_dir / "Makefile"
         makefile.touch()
         makefile.write_text("all:\n  echo 'Hello, world!'\nbad: noexist.c\n\tgcc -o bad noexist.c")
         return makefile
@@ -370,7 +370,7 @@ def test_pps_links_test_files(temp_assignment, temp_submission_file):
 #     new_link_target = tmp_path / "new_tests"
 #     new_link_target.mkdir()
 #
-#     temp_assignment.linkTemplateDir = new_link_target
+#     temp_assignment.link_template_dir = new_link_target
 #
 #     temp_assignment.PostProcessSubmission(temp_submission_file, exists_protocol=LinkProto.LINK_OVERWRITE)
 #
