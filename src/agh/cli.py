@@ -460,7 +460,7 @@ async def parse_pytest_output(
     output_info.return_code = proc.returncode
 
     # Set the metadata for this run in the assignment.
-    assignment.setMetadata(f"{META_KEY_RUN_OUTPUT}.{submission.name}", output_info.asdict())
+    assignment.setMetadata(META_KEY_RUN_OUTPUT, submission.name, value=output_info.asdict())
     assignment.save()
     return proc.returncode
 
@@ -554,10 +554,10 @@ async def execute_pytest_on_submissions(cli_args: argparse.Namespace, assignment
             console.print(f"[red]Tests failed for {submission.name}[/red]")
             if cli_args.verbose:
                 console.print("[bold label]Output:[/]")
-                for line in assignment.getMetadata(".".join([META_KEY_RUN_OUTPUT, submission.name, "output"]), default=[]):
+                for line in assignment.getMetadata(META_KEY_RUN_OUTPUT, submission.name, "output", default=[]):
                     console.print(line)
                 console.print("[bold label]Errors:[/]")
-                err_lines = assignment.getMetadata(".".join([META_KEY_RUN_OUTPUT, submission.name, "error"]), default=[])
+                err_lines = assignment.getMetadata(META_KEY_RUN_OUTPUT, submission.name, "error", default=[])
                 if err_lines:
                     for line in err_lines:
                         console.print(line, style="error")

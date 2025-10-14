@@ -18,6 +18,10 @@ from typing import get_origin
 
 import agh.anonymizer as anonymizer
 
+META_INTERNAL_SUB_KEY = "SUBMISSION"
+
+META_AGH_INTERNAL_KEY = "AGH_INTERNAL"
+
 _USER_DEFAULTS_FILE = Path.home() / ".config" / "agh" / ".agh_user_defaults.json"
 
 
@@ -204,9 +208,16 @@ class MetaDataclassJson(DataclassJson):
 
     _metadata: dict[str, Any] = field(default_factory=dict)
 
-    def getMetadata(self, metadata_key: str, default: Any = None) -> dict[str, Any]:
+    def _getMetadata(self, metadata_key: str, default: Any = None) -> dict[str, Any] | Any:
         """Returns the metadata associated with the assignment.
-        If the key is not present in the metadata, it will return the default value."""
+        If the key is not present in the metadata, it will return the default value.
+
+        :param metadata_key: This should be a dot-separated string.
+            E.g. 'course.name.short' would get the following:
+            {'course': {'name': {'short': `value`}}} creating sub-dictionaries as necessary,
+            while also preserving existing keys at each level.
+        :param default: The default value to return if the key is not present in the metadata.
+        :return: The value associated with the key, or the default value if the key is not present."""
         cur_metadata = self._metadata
         for key in metadata_key.split("."):
             if key in cur_metadata:
@@ -215,7 +226,19 @@ class MetaDataclassJson(DataclassJson):
                 return default
         return cur_metadata
 
-    def setMetadata(self, metadata_key: str, value: Any) -> Self:
+    def getMetadata(self, *args, default: Any = None) -> dict[str, Any]:
+        """Returns the metadata associated with the assignment.
+
+        If the key is not present in the metadata, it will return the default value.
+        :param args: This should be a series of strings.
+            E.g. ``getMetadata('course', 'name', 'short', default)`` would get the following:
+            ``{'course': {'name': {'short': value or default}}}`` creating sub-dictionaries as necessary,
+            while also preserving existing keys at each level.
+        :param default: The default value to return if the key is not present in the metadata.
+        :return: The value associated with the key, or the default value if the key is not present."""
+        return self._getMetadata(".".join(args), default=default)
+
+    def _setMetadata(self, metadata_key: str, value: Any) -> Self:
         """This sets the metadata associated with the assignment.
 
         :param metadata_key: This should be a dot-separated string.
@@ -237,6 +260,21 @@ class MetaDataclassJson(DataclassJson):
             cur_metadata = cur_metadata[key]
         cur_metadata[metadata_keys[-1]] = value
         return self
+
+    def setMetadata(self, *args, value: Any) -> Self:
+        """Returns the metadata associated with the assignment.
+
+        If the key is not present in the metadata, it will return the default value.
+        :param args: This should be a series of strings.
+            E.g. ``setMetadata('course', 'name', 'short', default)`` would set the following:
+            ``{'course': {'name': {'short': value or default}}}`` creating sub-dictionaries as necessary,
+            while also preserving existing keys at each level.
+        :param value: The value to set.
+        :return: This object for chaining.
+            Ex: ``obj.setMetadata('key', 'value').setMetadata('key2', 'value2')``
+        :rtype: Self
+        """
+        return self._setMetadata(".".join(args), value=value)
 
 
 def _gen_prop_methods(parameter: str, default: Any):
@@ -301,8 +339,7 @@ class GraderOptions(MetaDataclassJson):
         # This function should be used to construct the property deleter.
         delattr(self, property)
 
-    # todo: Test this.
-    def getMetadata(self, metadata_key: str, default: Any = None) -> dict[str, Any]:
+    def _getMetadata(self, metadata_key: str, default: Any = None) -> dict[str, Any]:
         """Returns the metadata associated with the assignment.
         If the key is not present in the metadata, it will return the default value."""
         cur_metadata = self._metadata
@@ -1053,7 +1090,7 @@ class Submission(SubmissionData):
         """Check if the submission has errors.
         These are NOT testing errors, but anything preventing the submission from being tested.
         """
-        errors = self.metadata.get("errors", [])
+        errors: list[str] = self.getMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "errors", default=[])
         if not self.as_submitted_dir.exists():
             errors.append(f"Submission directory '{self.as_submitted_dir.absolute()}' does not exist.")
             return errors
@@ -1071,21 +1108,23 @@ class Submission(SubmissionData):
         """Add an error to the submission.
         These are NOT testing errors, but anything preventing the submission from being tested.
         """
-        self.metadata["errors"] = self.metadata.get("errors", []).append(txt_or_markdown)
-        return self
+
+        # DON'T USE the property above. It adds transient errors. Just get the metadata and add to it.
+        errors: list[str] = self.getMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "errors", default=[])
+        errors.append(txt_or_markdown)
+        return self.setMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "errors", value=errors)
 
     @property
     def warnings(self) -> None | list[str]:
         """Check if the submission has warnings.
         These are NOT testing warnings, but anything possibly preventing the submission from being tested.
         """
-        if self.metadata.get("warnings", None) is not None:
-            return self.metadata["warnings"]
-        return None
+        return self.getMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "warnings")
 
     def addWarning(self, txt_or_markdown: str) -> "Submission":
         """Add a warning to the submission.
         These are NOT testing warnings, but anything possibly preventing the submission from being tested.
         """
-        self.metadata["warnings"] = self.metadata.get("warnings", []).append(txt_or_markdown)
-        return self
+        warnings = self.warnings
+        warnings.append(txt_or_markdown)
+        return self.setMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "warnings", value=warnings)

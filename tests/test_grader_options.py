@@ -33,7 +33,7 @@ def test_load_user_defaults_with_file(swap_actual_user_defaults):
 
 def test_metadata_set(swap_actual_user_defaults, tmp_path: Path):
     udo = GraderOptions.loadUserDefaults()
-    udo.setMetadata("test_key", "test_value")
+    udo.setMetadata("test_key", value="test_value")
     save_path = tmp_path / "test_user_defaults.json"
     udo.save(save_path)
 
@@ -42,7 +42,7 @@ def test_metadata_set(swap_actual_user_defaults, tmp_path: Path):
 
 def test_metadata_set_multi_level(swap_actual_user_defaults, tmp_path: Path):
     udo = GraderOptions.loadUserDefaults()
-    udo.setMetadata("test_key.bob.sally", 'a').setMetadata("test_key.bob.tom", "b")
+    udo.setMetadata("test_key.bob.sally", value='a').setMetadata("test_key.bob.tom", value="b")
     save_path = tmp_path / "test_user_defaults.json"
     udo.save(save_path)
 
@@ -50,3 +50,14 @@ def test_metadata_set_multi_level(swap_actual_user_defaults, tmp_path: Path):
     assert udo2.getMetadata("test_key") == dict(bob=dict(sally='a', tom="b"))
     assert udo2.getMetadata("test_key.bob.tom") == "b"
     assert udo2.getMetadata("test_key.bob") == dict(sally='a', tom="b")
+
+def test_metadata_set_multi_level_list(swap_actual_user_defaults, tmp_path: Path):
+    udo = GraderOptions.loadUserDefaults()
+    udo.setMetadata("test_key", "bob", "sally", value='a').setMetadata("test_key", "bob", "tom", value="b")
+    save_path = tmp_path / "test_user_defaults.json"
+    udo.save(save_path)
+
+    udo2 = GraderOptions.load(save_path)
+    assert udo2.getMetadata("test_key") == dict(bob=dict(sally='a', tom="b"))
+    assert udo2.getMetadata("test_key", "bob", "tom") == "b"
+    assert udo2.getMetadata("test_key", "bob") == dict(sally='a', tom="b")
