@@ -17,22 +17,31 @@ Why does this file exist, and why not put this in __main__?
 """
 
 import argparse
+import asyncio
 import datetime
 import functools
+import re
 import sys
+from dataclasses import dataclass
+from dataclasses import field
 from pathlib import Path
 from urllib import parse
 
 import argcomplete
+import rich.progress
 import rich.table
+from rich.markdown import Markdown
 from rich_argparse import RichHelpFormatter
 
 from agh import Assignment
 from agh import Submission
 from agh import __version__
 from agh import main_console
+from agh.agh_data import DataclassJson
 from agh.agh_data import GraderOptions
 from agh.agh_data import SubmissionFileData
+
+META_KEY_RUN_OUTPUT = "Execution output"
 
 console = main_console
 print = console.print
@@ -138,6 +147,14 @@ assignment_info_parser.add_argument("-d", "--details", action="store_true", help
 # Add required files command
 assign_add_required_parser = assignment_subparsers.add_parser("add-required", help="Add required files")
 assign_add_required_parser.add_argument("files", nargs="+", help="Required file names", type=Path)
+assign_add_required_parser.add_argument("type", help="Type of the required file", type=str).completer = lambda **kwargs: [
+    "txt",
+    "py",
+    "c",
+    "cpp",
+    "java",
+    "default",
+]
 assign_add_required_parser.add_argument("-d", "--description", help="Description of the required files", type=str, default="")
 assign_add_required_parser.add_argument("-t", "--title", help="Title of the required files", type=str, default="")
 assign_add_required_parser.add_argument(
@@ -147,12 +164,19 @@ assign_add_required_parser.add_argument(
 # Add optional files command
 assign_add_optional_parser = assignment_subparsers.add_parser("add-optional", help="Add optional files")
 assign_add_optional_parser.add_argument("files", nargs="+", help="Optional file names")
+assign_add_optional_parser.add_argument("type", help="Type of the required file", type=str).completer = lambda **kwargs: [
+    "txt",
+    "py",
+    "c",
+    "cpp",
+    "java",
+    "default",
+]
 assign_add_optional_parser.add_argument("-d", "--description", help="Description of the optional files", type=str, default="")
-assign_add_required_parser.add_argument("-t", "--title", help="Title of the optional files", type=str, default="")
-assign_add_required_parser.add_argument(
+assign_add_optional_parser.add_argument("-t", "--title", help="Title of the optional files", type=str, default="")
+assign_add_optional_parser.add_argument(
     "-i", "--include-in-output", help="Include in output", action=argparse.BooleanOptionalAction, default=True
 )
-
 
 sub_subparser = subparsers.add_parser("submission", help="Submission commands", formatter_class=RichHelpFormatter)
 sub_subparsers = sub_subparser.add_subparsers(dest="sub_command", help="Submission commands")
@@ -167,28 +191,93 @@ sub_add_subparser.add_argument("files", nargs="+", help="Submission files to add
 sub_fix_subparser = sub_subparsers.add_parser(
     "fix", help="Fix a submission. Try this if you accidentally deleted something. This may re-create links etc."
 )
-sub_fix_subparser.add_argument("files", nargs="+", help="Submission files to add", type=str).completer = lambda **kwargs: [
-    subm.evaluation_directory.name for subm in get_current_assignment().Submissions
+sub_fix_subparser.add_argument("submissions", nargs="+", help="Submission files to add", type=str).completer = lambda **kwargs: [
+    subm.name for subm in get_current_assignment().Submissions
 ]
 
+
+def submissionCompleter(*args, **kwargs):
+    # return ['Bob','Tom']
+    try:
+        ret_val = [str(subm.evaluation_directory.resolve().relative_to(Path.cwd(), walk_up=True)) for subm in Assignment.load().Submissions]
+        return ret_val
+    except Exception as e:
+        argcomplete.warn("No assignment found. Cannot complete submission files.")
+        argcomplete.warn(e)
+        return ["Bob"]
+
+
+# Add run command
+run_parser = subparsers.add_parser("run", help="Run submission files. This executes build, test, and render.")
+run_parser.add_argument(
+    "-s", "--submission", dest="submissions", nargs="+", help="Submissions to run (build, test, render).", type=Path, default=None
+).completer = submissionCompleter
+run_parser.add_argument("-v", "--verbose", dest="verbose", action="store_true", help="Verbose output.", default=False)
+
+# Add test command
+test_parser = subparsers.add_parser("test", help="Test submission files. This just runs the tests for the given submissions.")
+test_parser.add_argument(
+    "-s", "--submission", dest="submissions", nargs="+", help="Submissions to run (build, test, render).", type=Path, default=None
+).completer = submissionCompleter
+test_parser.add_argument("-v", "--verbose", dest="verbose", action="store_true", help="Verbose output.", default=False)
+
+# Add build command
+build_parser = subparsers.add_parser("build", help="Build submission files")
+build_parser.add_argument(
+    "-s", "--submission", dest="submissions", nargs="+", help="Submissions to run (build, test, render).", type=Path, default=None
+).completer = submissionCompleter
+build_parser.add_argument("-v", "--verbose", dest="verbose", action="store_true", help="Verbose output.", default=False)
+
+# Add render command
+render_parser = subparsers.add_parser("render", help="Render submission files")
+render_parser.add_argument(
+    "-s", "--submission", dest="submissions", nargs="+", help="Submissions to run (build, test, render).", type=Path, default=None
+).completer = submissionCompleter
+render_parser.add_argument("-v", "--verbose", dest="verbose", action="store_true", help="Verbose output.", default=False)
 
 argcomplete.autocomplete(parser)
 
 
 def display_assignment_info(cli_args: argparse.Namespace):
     assignment = Assignment.load()
-    console.print(f'[bold green]Assignment "{assignment.name}"')
-    console.print(
-        f"[bold green]Course:[/] {assignment.course}, [bold green]Term:[/] "
-        f"{assignment._grade_period}, [bold green]Year:[/] {assignment.year}"
-    )
+    console.print(f'[label]Assignment "{assignment.name}"')
+    console.print(f"[label]Course:[/] {assignment.course}, [label]Term:[/] {assignment._grade_period}, [label]Year:[/] {assignment.year}")
     submissions = list(assignment.Submissions)
-    console.print(f"[bold green]Submissions:[/] {len(submissions)}")
+    console.print(f"[label]Submissions:[/] {len(submissions)}")
+
+    files_table = rich.table.Table(title="[label][req]Required[/req]/[opt]Optional[/opt] Files", expand=True, show_lines=True)
+    files_table.add_column("Link", justify="center")
+    files_table.add_column("Output", justify="center")
+    files_table.add_column("Name", justify="left")
+    files_table.add_column("Type", justify="center")
+    files_table.add_column("Title", justify="left")
+    files_table.add_column("Description", justify="left", overflow="fold")
+
+    def add_submission_file(required_file: SubmissionFileData, style: str = ""):
+        pth: Path = assignment.assignment_description_dir / required_file.path.name
+        pth = pth.resolve()
+        files_table.add_row(
+            f"[link agh-edit:{parse.quote(str(pth))}] :notebook: [/]",
+            ":white_check_mark:" if required_file.include_in_output else ":x:",
+            f"[{style}]{required_file.path.name}",
+            required_file.type,
+            required_file.title,
+            Markdown(required_file.description),
+        )
+
+    for required_file in assignment.required_files.values():
+        add_submission_file(required_file, "req")
+    for optional_file in assignment.optional_files.values():
+        add_submission_file(optional_file, "opt")
+
+    console.print(files_table)
+
     if cli_args.details:
         console.log(assignment, submissions)
 
 
-def display_submission_info(cli_args: argparse.Namespace, submission: Submission, assignment: Assignment):
+def display_submission_info(cli_args: argparse.Namespace, assignment: Assignment):
+    # todo: "[error] Add links to the editable output files."
     console.print("[error] Add links to the editable output files.")
     console.rule("[bold dark_green]Submission Info")
     submission_table = rich.table.Table(title="Submissions")
@@ -231,7 +320,7 @@ def display_submission_info(cli_args: argparse.Namespace, submission: Submission
                 sub_color = "yellow"
             case (False, False, True):
                 sub_color = "green"
-        submission_table.add_row(errors, warnings, output, f"[bold {sub_color}] {submission.evaluation_directory.name} [/]")
+        submission_table.add_row(errors, warnings, output, f"[bold {sub_color}] {submission.name} [/]")
 
     console.print(submission_table)
 
@@ -243,6 +332,57 @@ def get_current_assignment() -> Assignment:
     except FileNotFoundError:
         console.print("[error]No assignment found.")
         sys.exit(1)
+
+
+def handleAssignmentCmd(cli_args: argparse.Namespace):
+    match cli_args.assignment_command:
+        case "new":
+            try:
+                if Assignment.load(None) is not None or (Path.cwd() / "src" / "agh").exists():
+                    print(f'[error]Assignment "{cli_args.name}" already exists.')
+                    sys.exit(1)
+            except FileNotFoundError:
+                pass
+            with console.status("Creating assignment", spinner="dots"):
+                console.print(f'[bold green]Creating assignment "{cli_args.name}"')
+                new_assignment = Assignment(
+                    _name=cli_args.name,
+                    _course=cli_args.course,
+                    _grade_period=cli_args.term,
+                    _year=cli_args.year,
+                    _options=GraderOptions(anonymize_names=cli_args.anon),
+                )
+                console.print(f"[bold green]saving {new_assignment.name}.")
+                new_assignment.save()
+                console.print("[bold green]Creating directories.")
+                new_assignment.createMissingDirectories()
+                console.print(f'[bold green]Assignment "{new_assignment.name}" created successfully.')
+        case "info":
+            display_assignment_info(cli_args)
+        case "add-required" | "add-optional":
+            assignment = get_current_assignment()
+            if len(cli_args.files) > 1 and (len(cli_args.title) or len(cli_args.description)):
+                console.log("[error]Cannot specify a title or description when adding multiple files.")
+
+            method = None
+            if cli_args.assignment_command == "add-required":
+                method = assignment.addRequiredFile
+            else:
+                method = assignment.addOptionalFile
+
+            for cur_file in cli_args.files:
+                method(
+                    SubmissionFileData(
+                        path=Path(cur_file),
+                        title=cli_args.title,
+                        description=cli_args.description,
+                        include_in_output=cli_args.include_in_output,
+                    )
+                )
+                console.print(f"[bold green]Added file '{cur_file}'")
+            assignment.save()
+        case _:
+            console.log(cli_args, style="error")
 
 
 def handleSubmissionCmd(cli_args: argparse.Namespace):
@@ -258,6 +398,7 @@ def handleSubmissionCmd(cli_args: argparse.Namespace):
                 for cur_file in cli_args.files:
                     console.print(f"Adding {cur_file}")
                     assignment.AddSubmission(cur_file).save()
+                assignment.save()
         case "fix":
             with console.status("Fixing submissions...", spinner="dots"):
                 console.print("Loading assignment.")
@@ -271,79 +412,199 @@ def handleSubmissionCmd(cli_args: argparse.Namespace):
                     cur_subm = Submission.load(cur_subm_dir)
                     cur_subm.fix(assignment=assignment)
                     assignment.PostProcessSubmission(cur_subm).save()
+        case _:
+            console.log(cli_args, style="error")
+
+
+@dataclass(kw_only=True)
+class RunOutputInfo(DataclassJson):
+    """Dataclass for storing the output of a run command."""
+
+    output: list[str] | None = field(default_factory=list)
+    error: list[str] | None = field(default_factory=list)
+    collected: int | None = None
+    return_code: int | None = None
+
+
+async def parse_pytest_output(
+    assignment: Assignment, submission: Submission, proc: asyncio.subprocess.Process, progress: rich.progress.Progress, task_id
+):
+    output_info = RunOutputInfo()
+
+    async def error_collector():
+        while True:
+            error_line = await proc.stderr.readline()
+            if not error_line:
+                break
+            error_line = error_line.decode().strip()
+            output_info.error.append(error_line)
+
+    err_coll_task = asyncio.create_task(error_collector(), name=f"{submission.name} error stream collector.")
+    while True:
+        line = await proc.stdout.readline()
+        if not line:
+            break
+        line = line.decode().strip()
+        output_info.output.append(line)
+        if "collecting ..." in line:
+            match = re.search(r"collected (\d+) items", line)
+            if match:
+                output_info.collected = int(match.group(1))
+                progress.update(task_id, total=output_info.collected)
+        elif " PASSED " in line or " FAILED " in line or " SKIPPED " in line:
+            progress.update(task_id, advance=1)
+        progress.update(task_id, description=line)
+    await proc.wait()
+    await err_coll_task
+
+    output_info.return_code = proc.returncode
+
+    # Set the metadata for this run in the assignment.
+    assignment.setMetadata(f"{META_KEY_RUN_OUTPUT}.{submission.name}", output_info.asdict())
+    assignment.save()
+    return proc.returncode
+
+
+async def run_pytest(
+    assignment: Assignment, submission: Submission, progress: rich.progress.Progress, extra_pytest_args: str = ""
+) -> tuple[Submission, bool]:
+    """Run pytest on the given submission.
+
+    :type assignment: Assignment
+    :param assignment: The current assignment object.
+    :param submission: The submission object that is being tested.
+    :param progress: The progress bar object.
+    :param extra_pytest_args: Extra pytest arguments to pass to pytest. Used for -m "not build and not render" etc.
+    :return: A tuple containing the submission object and a boolean indicating whether the test was successful.
+    :rtype: tuple[Submission, bool]
+    """
+
+    # The pytest command, when wanting to run on a specific directory or file, expects the path to the testing directory.
+    # This resolves that path relative to the submission directory.
+    tests_path = submission.evaluation_directory / assignment.tests_dir.name
+    if not tests_path.exists():
+        task_id = progress.add_task("Testing...", total=1)
+        progress.update(
+            task_id,
+            advance=1,
+            completed=True,
+            description=f"[error]Tests directory '{tests_path.absolute()}'not found. Perhaps run fix on {submission.name} first?",
+        )
+        return submission, False
+
+    # Setup the progress bar.
+    task_id = progress.add_task(f"Testing {tests_path.absolute()}...", total=None)
+
+    # Run pytest.
+    proc = await asyncio.create_subprocess_shell(
+        f"pytest -v -p agh-pytest-plugin {extra_pytest_args} {tests_path.absolute()}/*",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    return_code = await parse_pytest_output(assignment, submission, proc, progress, task_id)
+    return submission, return_code == 0
+
+
+async def execute_pytest_on_submissions(cli_args: argparse.Namespace, assignment: Assignment, extra_pytest_args: str = ""):
+    """This function asynchronously runs pytest on all submissions specified.
+
+    It provides a progress bar for each submission to indicate the progress of the tests.
+
+    :param cli_args: The command line arguments.
+    :param assignment: The assignment object.
+    :param extra_pytest_args: Extra pytest arguments to pass to pytest. Used for `-m "not build and not render"` etc.
+    :return: None
+    """
+    # If there are no submissions specified, run on all submissions.
+    if cli_args.submissions is None:
+        cli_args.submissions = list(assignment.Submissions)
+    else:
+        # The CLI submissions provide the directory for the submission. We convert
+        #  to the submission objects and report any that don't exist.
+        submission_list = []
+        for submission in cli_args.submissions:
+            try:
+                submission_list.append(Submission.load(submission))
+            except FileNotFoundError:
+                console.print(f"[error]No submission found for {submission}")
+                continue
+            except Exception as e:
+                console.print(f"[error]Error loading submission {submission}: {e}")
+                continue
+        cli_args.submissions = submission_list
+
+    if len(cli_args.submissions) == 0:
+        console.print("[error]No submissions found.")
+        return
+    else:
+        console.print(f"Running tests on {len(cli_args.submissions)} submissions.")
+
+    with rich.progress.Progress(
+        rich.progress.SpinnerColumn(spinner_name="dots"),
+        *rich.progress.Progress.get_default_columns(),
+        rich.progress.TimeRemainingColumn(),
+    ) as progress:
+        tasks = [run_pytest(assignment, submission, progress, extra_pytest_args=extra_pytest_args) for submission in cli_args.submissions]
+        results = await asyncio.gather(*tasks)
+
+    for submission, success in results:
+        if success:
+            console.print(f"[green]Tests passed for {submission.name}[/green]")
+        else:
+            console.print(f"[red]Tests failed for {submission.name}[/red]")
+            if cli_args.verbose:
+                console.print("[bold label]Output:[/]")
+                for line in assignment.getMetadata(".".join([META_KEY_RUN_OUTPUT, submission.name, "output"]), default=[]):
+                    console.print(line)
+                console.print("[bold label]Errors:[/]")
+                err_lines = assignment.getMetadata(".".join([META_KEY_RUN_OUTPUT, submission.name, "error"]), default=[])
+                if err_lines:
+                    for line in err_lines:
+                        console.print(line, style="error")
 
 
 def run(args=None):
     """Entry point for console_scripts"""
+
     if args is None:
         args = sys.argv[1:]
         if len(args) == 0:
             args = ["-H"]
     cli_args = parser.parse_args(args=args)
     console.rule(f"[b i]agh[/] - Assignment Grading Helper - Version: [b i]{__version__}")
-    # console.print(f'[purple bold underline]agh[/] version [white]{__version__}')
     match cli_args.command:
         case "status":
             assignment = get_current_assignment()
             display_assignment_info(cli_args)
             display_submission_info(cli_args, assignment)
-
         case "assignment":
-            match cli_args.assignment_command:
-                case "new":
-                    try:
-                        if Assignment.load(None) is not None or (Path.cwd() / "src" / "agh").exists():
-                            print(f'[error]Assignment "{cli_args.name}" already exists.')
-                            sys.exit(1)
-                    except FileNotFoundError:
-                        pass
-                    with console.status("Creating assignment", spinner="dots"):
-                        console.print(f'[bold green]Creating assignment "{cli_args.name}"')
-                        new_assignment = Assignment(
-                            _name=cli_args.name,
-                            _course=cli_args.course,
-                            _grade_period=cli_args.term,
-                            _year=cli_args.year,
-                            _options=GraderOptions(anonymize_names=cli_args.anon),
-                        )
-                        console.print(f"[bold green]saving {new_assignment.name}.")
-                        new_assignment.save()
-                        console.print("[bold green]Creating directories.")
-                        new_assignment.createMissingDirectories()
-                        console.print(f'[bold green]Assignment "{new_assignment.name}" created successfully.')
-                case "info":
-                    display_assignment_info(cli_args)
-                case "add-required":
-                    assignment = get_current_assignment()
-                    if len(cli_args.files) > 1 and (len(cli_args.title) or len(cli_args.description)):
-                        console.log("[error]Cannot specify a title or description when adding multiple files.")
-
-                    for cur_file in cli_args.files:
-                        assignment.addOptionalFile(
-                            SubmissionFileData(
-                                path=Path(cur_file),
-                                title=cli_args.title,
-                                description=cli_args.description,
-                                include_in_output=cli_args.include_in_output,
-                            )
-                        )
-                        console.print(f"[bold green]Added required file '{cur_file}'")
-                    assignment.save()
-                case _:
-                    console.log(cli_args)
+            handleAssignmentCmd(cli_args)
         case "submission":
             handleSubmissionCmd(cli_args)
-
+        case "run":
+            assignment = get_current_assignment()
+            asyncio.run(execute_pytest_on_submissions(cli_args, assignment))
+        case "test":
+            assignment = get_current_assignment()
+            asyncio.run(execute_pytest_on_submissions(cli_args, assignment, extra_pytest_args='-m "not build and not render"'))
+        case "build":
+            assignment = get_current_assignment()
+            asyncio.run(execute_pytest_on_submissions(cli_args, assignment, extra_pytest_args='-m "build"'))
+        case "render":
+            assignment = get_current_assignment()
+            asyncio.run(execute_pytest_on_submissions(cli_args, assignment, extra_pytest_args='-m "render"'))
         case _:
-            console.log(cli_args)
+            console.log(cli_args, style="error")
     # print(start(args))
     parser.exit(0)
 
 
 # todo: create custom url scheme so I can run things from links in the output.
-#   To create a custom URL scheme in Ubuntu that executes a command in the terminal, you need to define a desktop entry for the scheme and create a script to handle the URL.
+#   To create a custom URL scheme in Ubuntu that executes a command in the terminal, you need to define a desktop
+#   entry for the scheme and create a script to handle the URL.
 #   1. Create a Handler Script:
-#   First, create a script that will receive the custom URL and execute the desired command. For example, let's create a script named my-custom-handler.sh in your home directory:
+#   First, create a script that will receive the custom URL and execute the desired command. For example,
+#   let's create a script named my-custom-handler.sh in your home directory:
 #   Code
 #   >>>
 #   #!/bin/bash
@@ -360,7 +621,8 @@ def run(args=None):
 #   Make the script executable:
 #   > chmod +x ~/my-custom-handler.sh
 #   2. Create a Desktop Entry:
-#   Next, create a .desktop file to define your custom URL scheme. Create a file named mycommand-handler.desktop in ~/.local/share/applications/:
+#   Next, create a .desktop file to define your custom URL scheme. Create a file named mycommand-handler.desktop in
+#   ~/.local/share/applications/:
 #   Code
 #   >>>
 #   [Desktop Entry]
@@ -376,8 +638,10 @@ def run(args=None):
 #   > sudo update-desktop-database
 #   I THINK that you can just use `update-desktop-database` for user only change.
 #   4. Test the Custom URL Scheme:
-#   Now, you can test your custom URL scheme. Open your web browser or any application that supports opening URLs and enter a URL like:
+#   Now, you can test your custom URL scheme. Open your web browser or any application that supports opening URLs and
+#   enter a URL like:
 #   Code
 #   >>>
 #   mycommand://echo%20hello
-#   This should launch a new terminal window and execute the echo hello command. You can replace echo%20hello with any URL-encoded command you wish to run.
+#   This should launch a new terminal window and execute the echo hello command. You can replace echo%20hello with
+#   any URL-encoded command you wish to run.

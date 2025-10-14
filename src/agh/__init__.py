@@ -9,7 +9,9 @@ from .core import start
 
 __version__ = "0.2.5"
 
-default_theme = Theme({"info": "b cyan", "warning": "b r yellow", "danger": "bold r red"})
+default_theme = Theme(
+    {"info": "b cyan", "warning": "b r yellow", "error": "bold r red", "label": "b magenta", "req": "b dark_orange", "opt": "i navy_blue"}
+)
 main_console: console.Console = console.Console(theme=default_theme)
 
 __all__ = ["Assignment", "OutputSectionData", "Submission", "SubmissionFileData", "__version__", "start"]

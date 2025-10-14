@@ -45,7 +45,7 @@ class TestSubmissionData(unittest.TestCase):
         # Defaults
         self.assertIsNotNone(a.anon_name)
         self.assertIsNotNone(a.original_name)
-        self.assertEqual(a.compiled_initially, None)
+        # self.assertEqual(a.compiled_initially, None)
         self.assertEqual(a.initial_missing_files, None)
 
     def test_eq(self):
@@ -53,18 +53,18 @@ class TestSubmissionData(unittest.TestCase):
         file_store = self.file_store
 
         s1 = self.new_sub(
-            anon_name="test", original_name="bob.tar.gz", compiled_initially=True, initial_missing_files=["a.c", "b.c", "b.h"]
+            anon_name="test", original_name="bob.tar.gz", initial_missing_files=["a.c", "b.c", "b.h"]
         )
         s1_dup = self.new_sub(
             anon_name=s1.anon_name,
             original_name=s1.original_name,
-            compiled_initially=s1.compiled_initially,
+            # compiled_initially=s1.compiled_initially,
             initial_missing_files=s1.initial_missing_files,
         )
         self.assertEqual(s1, s1_dup)
 
         s2 = self.new_sub(
-            anon_name="test2", original_name="bob.tar.gz", compiled_initially=True, initial_missing_files=["a.c", "b.c", "b.h"]
+            anon_name="test2", original_name="bob.tar.gz", initial_missing_files=["a.c", "b.c", "b.h"]
         )
         self.assertNotEqual(s1, s2)
         self.assertNotEqual(s1, self.new_sub())
@@ -77,9 +77,9 @@ class TestSubmissionData(unittest.TestCase):
         s1_ch.anon_name = "test3"
         self.assertNotEqual(s1, s1_ch)
 
-        s1_ch = self.new_sub(**asdict(s1))
-        s1_ch.compiled_initially = not s1.compiled_initially
-        self.assertNotEqual(s1, s1_ch)
+        # s1_ch = self.new_sub(**asdict(s1))
+        # s1_ch.compiled_initially = not s1.compiled_initially
+        # self.assertNotEqual(s1, s1_ch)
 
         s1_ch = self.new_sub(**asdict(s1))
         s1_ch.original_name = "alice.tar.gz"
@@ -95,7 +95,7 @@ class TestSubmissionData(unittest.TestCase):
             file_store = base / "submission_data.json"
 
             s1 = self.new_sub(
-                anon_name="test", original_name="bob.tar.gz", compiled_initially=True, initial_missing_files=["a.c", "b.c", "b.h"]
+                anon_name="test", original_name="bob.tar.gz", initial_missing_files=["a.c", "b.c", "b.h"]
             )
 
             s1.save(file_store)
