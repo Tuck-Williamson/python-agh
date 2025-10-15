@@ -7,7 +7,7 @@ from .agh_data import Submission
 from .agh_data import SubmissionFileData
 from .core import start
 
-__version__ = "0.2.6"
+__version__ = "0.3.0"
 
 default_theme = Theme(
     {"info": "b cyan", "warning": "b r yellow", "error": "bold r red", "label": "b magenta", "req": "b dark_orange", "opt": "i navy_blue"}
