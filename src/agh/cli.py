@@ -187,6 +187,7 @@ assign_add_required_parser.add_argument("type", help="Type of the required file"
     "cpp",
     "java",
     "default",
+    "make",
 ]
 assign_add_required_parser.add_argument("-d", "--description", help="Description of the required files", type=str,
                                         default="")
@@ -205,6 +206,7 @@ assign_add_optional_parser.add_argument("type", help="Type of the required file"
     "c",
     "cpp",
     "java",
+    "make",
     "default",
 ]
 assign_add_optional_parser.add_argument("-d", "--description", help="Description of the optional files", type=str,
@@ -394,13 +396,8 @@ def handleAssignmentCmd(cli_args: argparse.Namespace):
                 pass
             with console.status("Creating assignment", spinner="dots"):
                 console.print(f'[bold green]Creating assignment "{cli_args.name}"')
-                new_assignment = Assignment(
-                    _name=cli_args.name,
-                    _course=cli_args.course,
-                    _grade_period=cli_args.term,
-                    _year=cli_args.year,
-                    _options=GraderOptions(anonymize_names=cli_args.anon),
-                )
+                new_assignment = Assignment(_name=cli_args.name, _course=cli_args.course, _grade_period=cli_args.term,
+                                            _year=cli_args.year, _options=GraderOptions(anonymize_names=cli_args.anon))
                 console.print(f"[bold green]saving {new_assignment.name}.")
                 new_assignment.save()
                 console.print("[bold green]Creating directories.")
@@ -413,21 +410,18 @@ def handleAssignmentCmd(cli_args: argparse.Namespace):
             if len(cli_args.files) > 1 and (len(cli_args.title) or len(cli_args.description)):
                 console.log("[error]Cannot specify a title or description when adding multiple files.")
 
+            # So that the same code can be used for both add-required and add-optional
+            #  (the only difference is the method used to add the file) curry the method to use.
             method = None
             if cli_args.assignment_command == "add-required":
                 method = assignment.addRequiredFile
             else:
                 method = assignment.addOptionalFile
 
+            # For each file call the method curried from above.
             for cur_file in cli_args.files:
-                method(
-                    SubmissionFileData(
-                        path=Path(cur_file),
-                        title=cli_args.title,
-                        description=cli_args.description,
-                        include_in_output=cli_args.include_in_output,
-                    )
-                )
+                method(SubmissionFileData(path=Path(cur_file), title=cli_args.title, description=cli_args.description,
+                                          include_in_output=cli_args.include_in_output, type=cli_args.type))
                 console.print(f"[bold green]Added file '{cur_file}'")
             assignment.save()
         case _:
@@ -453,8 +447,8 @@ def handleSubmissionCmd(cli_args: argparse.Namespace):
             with console.status("Fixing submissions...", spinner="dots"):
                 console.print("Loading assignment.")
                 assignment = get_current_assignment()
-                console.print(f"Fixing {len(cli_args.files)} submissions.")
-                for cur_file in cli_args.files:
+                console.print(f"Fixing {len(cli_args.submissions)} submissions.")
+                for cur_file in cli_args.submissions:
                     console.print(f"Fixing {cur_file}")
                     cur_subm_dir = assignment.eval_dir / cur_file
                     if not cur_subm_dir.exists():
