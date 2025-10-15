@@ -700,13 +700,16 @@ class Assignment(AssignmentData):
 
         return ret_val
 
-    def AddSubmission(self, submission_file: pathlib.Path) -> "Submission":
+    def AddSubmission(self, submission_file: pathlib.Path, override_anon: bool | None = None) -> "Submission":
         """Add a new submission to the assignment.
-        :param submission_file:
+        :param submission_file: The path to the submission file to add.
+        :param override_anon: If none then abide by the default for the assignment.
+        If True then make it anonymous even if assignment is default non-anonymous.
+        If False then make it non-anonymous even if assignment is default anonymous.
         :return: The new submission.
         :rtype: "Submission"
         """
-        ret_val = Submission.new(self, submission_file=submission_file)
+        ret_val = Submission.new(self, submission_file=submission_file, override_anon=override_anon)
         ret_val.save()
         return self.PostProcessSubmission(ret_val, exists_protocol=self.LinkProto.RAISE_ERROR)
 
@@ -962,7 +965,7 @@ class Submission(SubmissionData):
         raise FileNotFoundError(filepath)
 
     @classmethod
-    def new(cls, assignment: Assignment, submission_file: pathlib.Path):
+    def new(cls, assignment: Assignment, submission_file: pathlib.Path, override_anon: bool | None = None):
         """
         _Submission.new: Create a brand-new submission from a submission file.
 
@@ -973,7 +976,11 @@ class Submission(SubmissionData):
         anon_name = None
         base_file_name = submission_file.name
         base_file_name_set = False
-        if assignment._options.anonymize_names:
+        make_anon: bool = assignment._options.anonymize_names
+        if override_anon is not None:
+            make_anon = override_anon
+
+        if make_anon:
             anon_name = cls.get_anon_name(assignment, submission_file)
         else:
             # See if we can parse an OAKS name from the submission file.
