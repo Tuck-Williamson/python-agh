@@ -286,7 +286,7 @@ render_parser.add_argument("-v", "--verbose", dest="verbose", action="store_true
 argcomplete.autocomplete(parser)
 
 
-def display_assignment_info(cli_args: argparse.Namespace):
+def displayAssignmentInfo(cli_args: argparse.Namespace):
     assignment = Assignment.load()
     console.print(f'[label]Assignment "{assignment.name}"')
     console.print(
@@ -327,39 +327,46 @@ def display_assignment_info(cli_args: argparse.Namespace):
         console.log(assignment, submissions)
 
 
-def display_submission_info(cli_args: argparse.Namespace, assignment: Assignment):
-    # todo: "[error] Add links to the editable output files."
-    console.print("[error] Add links to the editable output files.")
-    console.rule("[bold dark_green]Submission Info")
-    submission_table = rich.table.Table(title="Submissions")
+def displaySubmissionInfo(cli_args: argparse.Namespace, assignment: Assignment):
+    submission_table = rich.table.Table(title="Submissions", expand=True)
     submission_table.add_column("Err", justify="center")
     submission_table.add_column("Warn", justify="center")
     submission_table.add_column("Output", justify="center")
     submission_table.add_column("Name", justify="left")
+    submission_table.add_column("Grading Output", justify="center")
 
     for submission in assignment.Submissions:
+
+        # For warnings and errors build 'links' that are just text so that there is
+        #  information when the user hovers over the link in the terminal.
         warnings = submission.warnings
         has_warnings = warnings is not None and len(warnings) > 0
         if warnings:
             warning_str = "\n".join(warnings)
-            warnings = f"[link {parse.quote(warning_str)}] :exclamation: [/]"
+            warnings = f"[link {parse.quote(warning_str)}]:exclamation:[/]"
         else:
-            warnings = ":thumbsup:"
+            warnings = ":white_check_mark:"
 
         errors = submission.errors
         has_errors = errors is not None and len(errors) > 0
         if errors:
             errors_str = "\n".join(errors)
-            errors = f"[link {parse.quote(errors_str)}] :x: [/]"
+            errors = f"[link {parse.quote(errors_str)}]:x:[/]"
         else:
-            errors = ":+1:"
+            errors = ":white_check_mark:"
 
-        output = submission.main_output_file
-        has_output = output is not None
-        if output:
-            output = f"[link file://{output}] :notebook: [/]"
+        output, main, graded, non_anon = submission.main_output_files
+        has_output = main is not None and main.exists()
+        if isinstance(main, Path) and main.exists():
+            output = f"[link file://{main.absolute()}] :notebook: [/]"
         else:
-            output = ":-1:"
+            output = ":x:" # + str(main)
+
+        # has_graded_output = graded is not None and graded.exists()
+        if isinstance(graded, Path) and graded.exists():
+            graded_output = f"[link file://{graded.absolute()}] :notebook: [/]"
+        else:
+            graded_output = ":x:" #+ str(graded)
 
         sub_color = "green"
         match (has_errors, has_warnings, has_output):
@@ -371,12 +378,12 @@ def display_submission_info(cli_args: argparse.Namespace, assignment: Assignment
                 sub_color = "yellow"
             case (False, False, True):
                 sub_color = "green"
-        submission_table.add_row(errors, warnings, output, f"[bold {sub_color}] {submission.name} [/]")
+        submission_table.add_row(errors, warnings, output, f"[bold {sub_color}] {submission.name} [/]", graded_output)
 
     console.print(submission_table)
 
 
-def get_current_assignment() -> Assignment:
+def getCurrentAssignment() -> Assignment:
     try:
         ret_val = Assignment.load()
         return ret_val
@@ -404,9 +411,9 @@ def handleAssignmentCmd(cli_args: argparse.Namespace):
                 new_assignment.createMissingDirectories()
                 console.print(f'[bold green]Assignment "{new_assignment.name}" created successfully.')
         case "info":
-            display_assignment_info(cli_args)
+            displayAssignmentInfo(cli_args)
         case "add-required" | "add-optional":
-            assignment = get_current_assignment()
+            assignment = getCurrentAssignment()
             if len(cli_args.files) > 1 and (len(cli_args.title) or len(cli_args.description)):
                 console.log("[error]Cannot specify a title or description when adding multiple files.")
 
@@ -436,17 +443,20 @@ def handleSubmissionCmd(cli_args: argparse.Namespace):
         case "add":
             with console.status(f"Adding submission{'s' if len(cli_args.files) > 1 else ''}...", spinner="dots"):
                 console.print("Loading assignment.")
-                assignment = get_current_assignment()
+                assignment = getCurrentAssignment()
                 console.print(f"Adding {len(cli_args.files)} submissions.")
                 # console.log(cli_args, style="error")
                 for cur_file in cli_args.files:
                     console.print(f"Adding {cur_file}")
-                    assignment.AddSubmission(cur_file, override_anon=cli_args.override_anon).save()
+                    try:
+                        assignment.AddSubmission(cur_file, override_anon=cli_args.override_anon, warning_callback=lambda warn: console.print(warn, style="warning")).save()
+                    except Exception as e:
+                        console.print(f"[error]Error adding submission '{cur_file}': {e}")
                 assignment.save()
         case "fix":
             with console.status("Fixing submissions...", spinner="dots"):
                 console.print("Loading assignment.")
-                assignment = get_current_assignment()
+                assignment = getCurrentAssignment()
                 console.print(f"Fixing {len(cli_args.submissions)} submissions.")
                 for cur_file in cli_args.submissions:
                     console.print(f"Fixing {cur_file}")
@@ -455,7 +465,7 @@ def handleSubmissionCmd(cli_args: argparse.Namespace):
                         console.print(f"[error]No submission directory found for {cur_file}.")
                     cur_subm = Submission.load(cur_subm_dir)
                     cur_subm.fix(assignment=assignment)
-                    assignment.PostProcessSubmission(cur_subm).save()
+                    assignment.PostProcessSubmission(cur_subm, warning_callback=lambda warn: console.print(warn, style="warning")).save()
         case _:
             console.log(cli_args, style="error")
 
@@ -469,6 +479,9 @@ class RunOutputInfo(DataclassJson):
     collected: int | None = None
     return_code: int | None = None
 
+def verbose_print(cli_args:argparse.Namespace, *args, **kwargs) -> None:
+    if cli_args.verbose:
+        console.print(*args, **kwargs)
 
 async def parse_pytest_output(
     assignment: Assignment, submission: Submission, proc: asyncio.subprocess.Process, progress: rich.progress.Progress,
@@ -491,7 +504,12 @@ async def parse_pytest_output(
             break
         line = line.decode().strip()
         output_info.output.append(line)
-        if "collecting ..." in line:
+        if "collecting ..." in line and 'selected' in line:
+            match = re.search(r"collected \d+ items / \d+ deselected / (\d+) selected", line)
+            if match:
+                output_info.collected = int(match.group(1))
+                progress.update(task_id, total=output_info.collected)
+        elif "collecting ..." in line:
             match = re.search(r"collected (\d+) items", line)
             if match:
                 output_info.collected = int(match.group(1))
@@ -511,7 +529,7 @@ async def parse_pytest_output(
 
 
 async def run_pytest(
-    assignment: Assignment, submission: Submission, progress: rich.progress.Progress, extra_pytest_args: str = ""
+    assignment: Assignment, submission: Submission, progress: rich.progress.Progress, cli_args:argparse.Namespace, extra_pytest_args: str = ""
 ) -> tuple[Submission, bool]:
     """Run pytest on the given submission.
 
@@ -539,12 +557,14 @@ async def run_pytest(
         )
         return submission, False
 
+    cmd_str : str = f"pytest -v -p agh-pytest-plugin --agh {extra_pytest_args} {tests_path.absolute()}/*"
+    # verbose_print(cli_args, 'Running pytest...', cmd_str)
     # Setup the progress bar.
     task_id = progress.add_task(f"Testing {tests_path.absolute()}...", total=None)
 
     # Run pytest.
     proc = await asyncio.create_subprocess_shell(
-        f"pytest -v -p agh-pytest-plugin {extra_pytest_args} {tests_path.absolute()}/*",
+        cmd_str,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -592,7 +612,7 @@ async def execute_pytest_on_submissions(cli_args: argparse.Namespace, assignment
         *rich.progress.Progress.get_default_columns(),
         rich.progress.TimeRemainingColumn(),
     ) as progress:
-        tasks = [run_pytest(assignment, submission, progress, extra_pytest_args=extra_pytest_args) for submission in
+        tasks = [run_pytest(assignment, submission, progress, cli_args, extra_pytest_args=extra_pytest_args) for submission in
                  cli_args.submissions]
         results = await asyncio.gather(*tasks)
 
@@ -601,15 +621,15 @@ async def execute_pytest_on_submissions(cli_args: argparse.Namespace, assignment
             console.print(f"[green]Tests passed for {submission.name}[/green]")
         else:
             console.print(f"[red]Tests failed for {submission.name}[/red]")
-            if cli_args.verbose:
-                console.print("[bold label]Output:[/]")
-                for line in assignment.getMetadata(META_KEY_RUN_OUTPUT, submission.name, "output", default=[]):
-                    console.print(line)
-                console.print("[bold label]Errors:[/]")
-                err_lines = assignment.getMetadata(META_KEY_RUN_OUTPUT, submission.name, "error", default=[])
-                if err_lines:
-                    for line in err_lines:
-                        console.print(line, style="error")
+        if cli_args.verbose:
+            console.print("[bold label]Output:[/]")
+            for line in assignment.getMetadata(META_KEY_RUN_OUTPUT, submission.name, "output", default=[]):
+                console.print(line)
+            console.print("[bold label]Errors:[/]")
+            err_lines = assignment.getMetadata(META_KEY_RUN_OUTPUT, submission.name, "error", default=[])
+            if err_lines:
+                for line in err_lines:
+                    console.print(line, style="error")
 
 
 def run(args=None):
@@ -623,25 +643,25 @@ def run(args=None):
     console.rule(f"[b i]agh[/] - Assignment Grading Helper - Version: [b i]{__version__}")
     match cli_args.command:
         case "status":
-            assignment = get_current_assignment()
-            display_assignment_info(cli_args)
-            display_submission_info(cli_args, assignment)
+            assignment = getCurrentAssignment()
+            displayAssignmentInfo(cli_args)
+            displaySubmissionInfo(cli_args, assignment)
         case "assignment":
             handleAssignmentCmd(cli_args)
         case "submission":
             handleSubmissionCmd(cli_args)
         case "run":
-            assignment = get_current_assignment()
+            assignment = getCurrentAssignment()
             asyncio.run(execute_pytest_on_submissions(cli_args, assignment))
         case "test":
-            assignment = get_current_assignment()
+            assignment = getCurrentAssignment()
             asyncio.run(
                 execute_pytest_on_submissions(cli_args, assignment, extra_pytest_args='-m "not build and not render"'))
         case "build":
-            assignment = get_current_assignment()
+            assignment = getCurrentAssignment()
             asyncio.run(execute_pytest_on_submissions(cli_args, assignment, extra_pytest_args='-m "build"'))
         case "render":
-            assignment = get_current_assignment()
+            assignment = getCurrentAssignment()
             asyncio.run(execute_pytest_on_submissions(cli_args, assignment, extra_pytest_args='-m "render"'))
         case _:
             console.log(cli_args, style="error")

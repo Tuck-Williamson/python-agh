@@ -11,16 +11,25 @@ from dataclasses import is_dataclass
 from enum import IntEnum
 from pathlib import Path
 from string import Template
-from typing import Any
+from typing import Any, Callable, LiteralString, Literal
 from typing import Self
 from typing import get_args
 from typing import get_origin
 
 import agh.anonymizer as anonymizer
 
+META_INTERNAL_SUB_OUTPUT = "OUTPUT_INFO"
+
 META_INTERNAL_SUB_KEY = "SUBMISSION"
 
 META_AGH_INTERNAL_KEY = "AGH_INTERNAL"
+META_INTERNAL_SUB_KEYS = [META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY]
+META_INTERNAL_SUB_OUTPUT_COMPLETE = [META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, META_INTERNAL_SUB_OUTPUT,
+                                     'COMPLETED_OUTPUT']
+META_INTERNAL_SUB_OUTPUT_GRADED = [META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, META_INTERNAL_SUB_OUTPUT,
+                                     'GRADED']
+META_INTERNAL_SUB_OUTPUT_NON_ANON = [META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, META_INTERNAL_SUB_OUTPUT,
+                                     'NON_ANON']
 
 _USER_DEFAULTS_FILE = Path.home() / ".config" / "agh" / ".agh_user_defaults.json"
 
@@ -164,8 +173,8 @@ class SubmissionFileData(DataclassJson):
     def asQmdSection(self, heading_level: int) -> str:
         if not self.include_in_output:
             return ""
-        if not self.path.exists():
-            self.path.touch()
+        # if not self.path.exists():
+        #     self.path.touch()
 
         hdr_txt = "#" * heading_level + " " + self.title + self.sectionAttr
         return f"\n\n{self.description}\n\n{hdr_txt}\n\n```{{.{self.type}}}\n{{{{< include {self.path} >}}}}\n```\n\n"
@@ -226,7 +235,7 @@ class MetaDataclassJson(DataclassJson):
                 return default
         return cur_metadata
 
-    def getMetadata(self, *args, default: Any = None) -> dict[str, Any]:
+    def getMetadata(self, *args, default: Any = None) -> dict[str, Any]|Any:
         """Returns the metadata associated with the assignment.
 
         If the key is not present in the metadata, it will return the default value.
@@ -637,10 +646,10 @@ class Assignment(AssignmentData):
         # Overwrite the existing file if it already exists.
         LINK_OVERWRITE = 2
 
-    def PostProcessSubmission(
-        self, submission_file: "pathlib.Path|Submission", exists_protocol: LinkProto = LinkProto.RAISE_ERROR
-    ) -> "Submission":
-        ret_val = submission_file
+    def PostProcessSubmission(self, submission_file: "pathlib.Path|Submission",
+                              exists_protocol: LinkProto = LinkProto.RAISE_ERROR,
+                              warning_callback: Callable[[str],None] | None = None) -> "Submission":
+        ret_val:Submission = submission_file
         if isinstance(submission_file, pathlib.Path):
             ret_val = Submission.load(filepath=submission_file)
 
@@ -681,37 +690,61 @@ class Assignment(AssignmentData):
             link_tgt.symlink_to(link_item.absolute(), target_is_directory=link_item.is_dir())
 
         # Now start linking the output stuff together.
+        return self.postProcessSubmissionRender(ret_val, warning_callback=warning_callback)
+
+    def postProcessSubmissionRender(self, submission: "Submission", warning_callback: Callable[[str],None] | None = None) -> "Submission":
         for output_file in self._options.output_files:
-            output_in_sub_dir = ret_val.evaluation_directory / output_file
-            output_file = self.complete_eval_dir / (ret_val.evaluation_directory.name + output_in_sub_dir.suffix)
-            output_not_anon = self.d2l_named_dir / (ret_val.original_name + output_in_sub_dir.suffix)
+            output_in_sub_dir = submission.evaluation_directory / output_file
+            output_file = self.complete_eval_dir / (submission.evaluation_directory.name + output_in_sub_dir.suffix)
+            submission.setMetadata(*META_INTERNAL_SUB_OUTPUT_COMPLETE, value=str(output_file))
+            output_not_anon = self.d2l_named_dir / (submission.original_name + output_in_sub_dir.suffix)
+            submission.setMetadata(*META_INTERNAL_SUB_OUTPUT_NON_ANON, value=str(output_not_anon))
             output_graded = self.graded_output_dir / output_file.name
+            submission.setMetadata(*META_INTERNAL_SUB_OUTPUT_GRADED, value=str(output_graded))
             try:
+                # Copy output_in_sub_dir to output_graded if needed
+                if (not output_graded.exists()) or (output_graded.exists() and output_graded.stat().st_ctime_ns == output_graded.stat().st_mtime_ns):
+                    output_graded.parent.mkdir(parents=True, exist_ok=True)
+
+                    #  This is to ensure that ctime == mtime!
+                    output_graded.unlink(missing_ok=True)
+
+                    output_graded.write_bytes(output_in_sub_dir.read_bytes())
+                elif warning_callback is not None:
+                    warning_callback(f'The graded output file "{output_graded}" already exists and appears modified. {output_graded} will not be overwritten.')
+                    # stats = output_graded.stat()
+                    # warning_callback(f'The graded output file info a:{stats.st_atime_ns}, c: {stats.st_ctime_ns}, m: {stats.st_mtime_ns}.')
+
                 output_file.unlink(missing_ok=True)
                 output_not_anon.unlink(missing_ok=True)
             except FileNotFoundError:
                 pass
+            # Create symbolic links
             output_file.symlink_to(
                 output_in_sub_dir.relative_to(output_file.parent, walk_up=True), target_is_directory=output_file.is_dir()
             )
+            output_file.chmod(0o444)
+
             output_not_anon.symlink_to(
                 output_graded.relative_to(output_not_anon.parent, walk_up=True), target_is_directory=output_not_anon.is_dir()
             )
 
-        return ret_val
+        return submission
 
-    def AddSubmission(self, submission_file: pathlib.Path, override_anon: bool | None = None) -> "Submission":
+    def AddSubmission(self, submission_file: pathlib.Path, override_anon: bool | None = None,
+                      warning_callback: Callable[[str],None] | None = None) -> "Submission":
         """Add a new submission to the assignment.
         :param submission_file: The path to the submission file to add.
         :param override_anon: If none then abide by the default for the assignment.
         If True then make it anonymous even if assignment is default non-anonymous.
         If False then make it non-anonymous even if assignment is default anonymous.
+        :param warning_callback: A callback function to be called when a warning is encountered.
         :return: The new submission.
         :rtype: "Submission"
         """
         ret_val = Submission.new(self, submission_file=submission_file, override_anon=override_anon)
         ret_val.save()
-        return self.PostProcessSubmission(ret_val, exists_protocol=self.LinkProto.RAISE_ERROR)
+        return self.PostProcessSubmission(ret_val, exists_protocol=self.LinkProto.RAISE_ERROR, warning_callback=warning_callback)
 
     # def __pytest_cmd(self):
     #     return "pytest ./ -p shell-utilities -p agh"
@@ -991,7 +1024,7 @@ class Submission(SubmissionData):
                     base_file_name = file_name
                     base_file_name_set = True
                 case _:
-                    anon_name = submission_file.stem
+                    anon_name = submission_file.with_suffix("").name
 
         evaluation_directory = assignment.eval_dir / anon_name
         evaluation_directory.mkdir(exist_ok=True, parents=True)
@@ -1081,23 +1114,53 @@ class Submission(SubmissionData):
         return self.anon_name
 
     @property
-    def main_output_file(self) -> Path | None:
-        """Check if the submission has output files."""
+    def main_output_files(self) -> list[Path | None ]:
+        """Return the submission's output files.
+        :return: A list of output files as follows:
+        ``[<main-output-file-where-rendered>,
+        <output-file-with-anon-name-in-output-directory>, <output-file-with-anon-name-in-GRADED-output-directory>, <output-file-with-NON-anon-name-in-output-directory>]``
+        """
         assign = Assignment.load()
+        rendered = None
         for output_file in assign._options.output_files:
             output_file = self.evaluation_directory / output_file
-            if not output_file.exists():
-                return None
-            else:
-                return output_file
-        return None
+            if output_file.exists():
+                rendered = output_file
+
+        main = self.getMetadata(*META_INTERNAL_SUB_OUTPUT_COMPLETE)
+        graded = self.getMetadata(*META_INTERNAL_SUB_OUTPUT_GRADED)
+        non_anon :None|str|Path= self.getMetadata(*META_INTERNAL_SUB_OUTPUT_NON_ANON)
+
+        if main is not None:
+            main = Path(main)
+        if graded is not None:
+            graded = Path(graded)
+        if non_anon is not None:
+            non_anon = Path(non_anon)
+
+        return [rendered, main, graded, non_anon]
+
+    # The next three methods have to do with getting, setting, and clearing errors or warnings.
+    def _getErrWarnList(self, type: Literal["errors", "warnings"]) -> list[str]:
+        return list(self.getMetadata(*META_INTERNAL_SUB_KEYS, type, default={}).values())
+
+    def _setErrWarnItem(self, type: Literal["errors", "warnings"], key: str, txt_or_markdown:str) -> Self:
+        keys = list(META_INTERNAL_SUB_KEYS)
+        keys.append(type)
+        keys.append(key)
+        return self.setMetadata(*keys, value=txt_or_markdown)
+
+    def _delErrWarnItem(self, type: Literal["errors", "warnings"], key: str) -> Self:
+        exist_md_dict:dict[Any, Any] = self.getMetadata(*META_INTERNAL_SUB_KEYS, type, default={})
+        exist_md_dict.pop(key, None)
+        return self.setMetadata(*META_INTERNAL_SUB_KEYS, type, value=exist_md_dict)
 
     @property
     def errors(self) -> None | list[str]:
         """Check if the submission has errors.
         These are NOT testing errors, but anything preventing the submission from being tested.
         """
-        errors: list[str] = self.getMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "errors", default=[])
+        errors: list[str] = self._getErrWarnList("errors")
         if not self.as_submitted_dir.exists():
             errors.append(f"Submission directory '{self.as_submitted_dir.absolute()}' does not exist.")
             return errors
@@ -1111,27 +1174,31 @@ class Submission(SubmissionData):
 
         return None
 
-    def addError(self, txt_or_markdown: str) -> "Submission":
+    def addError(self, key:str, txt_or_markdown: str) -> "Submission":
         """Add an error to the submission.
         These are NOT testing errors, but anything preventing the submission from being tested.
         """
 
         # DON'T USE the property above. It adds transient errors. Just get the metadata and add to it.
-        errors: list[str] = self.getMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "errors", default=[])
-        errors.append(txt_or_markdown)
-        return self.setMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "errors", value=errors)
+        return self._setErrWarnItem("errors", key, txt_or_markdown)
+        # errors: list[str] = self.getMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "errors", default=[])
+        # errors.append(txt_or_markdown)
+        # return self.setMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "errors", value=errors)
+    def delError(self, key:str) -> "Submission":
+        return self._delErrWarnItem("errors", key)
 
     @property
     def warnings(self) -> None | list[str]:
         """Check if the submission has warnings.
         These are NOT testing warnings, but anything possibly preventing the submission from being tested.
         """
-        return self.getMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "warnings")
+        return self._getErrWarnList("warnings")
 
-    def addWarning(self, txt_or_markdown: str) -> "Submission":
+    def addWarning(self, key:str, txt_or_markdown: str) -> "Submission":
         """Add a warning to the submission.
         These are NOT testing warnings, but anything possibly preventing the submission from being tested.
         """
-        warnings = self.warnings
-        warnings.append(txt_or_markdown)
-        return self.setMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "warnings", value=warnings)
+        return self._setErrWarnItem("warnings", key, txt_or_markdown)
+
+    def delWarning(self, key:str) -> "Submission":
+        return self._delErrWarnItem("warnings", key)
