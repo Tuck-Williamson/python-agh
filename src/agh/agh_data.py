@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import pathlib
+from collections.abc import Callable
 from collections.abc import Generator
 from dataclasses import asdict
 from dataclasses import dataclass
@@ -11,12 +12,15 @@ from dataclasses import is_dataclass
 from enum import IntEnum
 from pathlib import Path
 from string import Template
-from typing import Any, Callable, LiteralString, Literal
+from typing import Any
+from typing import Literal
 from typing import Self
 from typing import get_args
 from typing import get_origin
 
 import agh.anonymizer as anonymizer
+
+DEFAULT_MAX_OUT_FILE_SIZE = 20 * 1024
 
 META_INTERNAL_SUB_OUTPUT = "OUTPUT_INFO"
 
@@ -25,11 +29,9 @@ META_INTERNAL_SUB_KEY = "SUBMISSION"
 META_AGH_INTERNAL_KEY = "AGH_INTERNAL"
 META_INTERNAL_SUB_KEYS = [META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY]
 META_INTERNAL_SUB_OUTPUT_COMPLETE = [META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, META_INTERNAL_SUB_OUTPUT,
-                                     'COMPLETED_OUTPUT']
-META_INTERNAL_SUB_OUTPUT_GRADED = [META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, META_INTERNAL_SUB_OUTPUT,
-                                     'GRADED']
-META_INTERNAL_SUB_OUTPUT_NON_ANON = [META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, META_INTERNAL_SUB_OUTPUT,
-                                     'NON_ANON']
+                                     "COMPLETED_OUTPUT"]
+META_INTERNAL_SUB_OUTPUT_GRADED = [META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, META_INTERNAL_SUB_OUTPUT, "GRADED"]
+META_INTERNAL_SUB_OUTPUT_NON_ANON = [META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, META_INTERNAL_SUB_OUTPUT, "NON_ANON"]
 
 _USER_DEFAULTS_FILE = Path.home() / ".config" / "agh" / ".agh_user_defaults.json"
 
@@ -82,7 +84,8 @@ class DataclassJson:
                 setattr(self, cur_field.name, [str(cur_val) for cur_val in restore_these[cur_field.name]])
             elif get_origin(cur_field.type) is dict and hasattr(get_args(cur_field.type)[-1], "asdict"):
                 restore_these[cur_field.name] = getattr(self, cur_field.name)
-                setattr(self, cur_field.name, {cur_key: cur_val.asdict() for cur_key, cur_val in restore_these[cur_field.name].items()})
+                setattr(self, cur_field.name,
+                        {cur_key: cur_val.asdict() for cur_key, cur_val in restore_these[cur_field.name].items()})
         # if len(restore_these) > 0:
         #   print(self)
         ret_val = asdict(self)
@@ -108,7 +111,8 @@ class DataclassJson:
                 data[cur_field.name] = [get_args(cur_field.type)[0]._from_json(p) for p in data[cur_field.name]]
             elif get_origin(cur_field.type) is dict and hasattr(get_args(cur_field.type)[-1], "_from_json"):
                 # print(data[cur_field.name])
-                data[cur_field.name] = {k: get_args(cur_field.type)[-1]._from_json(p) for k, p in data[cur_field.name].items()}
+                data[cur_field.name] = {k: get_args(cur_field.type)[-1]._from_json(p) for k, p in
+                                        data[cur_field.name].items()}
             elif is_dataclass(cur_field.type):
                 data[cur_field.name] = cur_field.type(**data[cur_field.name])
             elif get_origin(cur_field.type) is list and is_dataclass(get_args(cur_field.type)[0]):
@@ -170,14 +174,22 @@ class SubmissionFileData(DataclassJson):
             return " {.unlisted .unnumbered}"
         return ""
 
-    def asQmdSection(self, heading_level: int) -> str:
+    def asQmdSection(self, heading_level: int, max_file_size: int = DEFAULT_MAX_OUT_FILE_SIZE) -> str:
         if not self.include_in_output:
             return ""
         # if not self.path.exists():
         #     self.path.touch()
 
+        # Check for excessive length.
         hdr_txt = "#" * heading_level + " " + self.title + self.sectionAttr
-        return f"\n\n{self.description}\n\n{hdr_txt}\n\n```{{.{self.type}}}\n{{{{< include {self.path} >}}}}\n```\n\n"
+        ret_val = f"\n\n{hdr_txt}\n\n{self.description}\n\n"
+        if self.path.exists() and self.path.stat().st_size > max_file_size:
+            with self.path.open('rt', encoding="utf-8", errors="replace") as f:
+                ret_val += (f"**[File too large! Contents truncated to {max_file_size} bytes.]{{.mark}}**\n\n```{{."
+                            f"{self.type}}}\n{f.read(max_file_size)}\n```\n\n")
+            return ret_val
+
+        return f"{ret_val}```{{.{self.type}}}\n{{{{< include {self.path} >}}}}\n```\n\n"
 
 
 # Mark all fields as keyword-only so that we can load directly from JSON.
@@ -190,12 +202,17 @@ class OutputSectionData(SubmissionFileData):
     included_sections: list["OutputSectionData"] = field(default_factory=list)
     only_output_if_data: bool = False
     post_script: str = ""
+    _errors: list[dict[Literal["title", "message"], str]] = field(default_factory=list)
+    _warnings: list[dict[Literal["title", "message"], str]] = field(default_factory=list)
 
     @property
     def hasData(self):
-        if len(self.included_sections) > 0 or len(self.included_files) > 0:
+        if len(self._errors) > 0 or len(self._warnings) > 0:
+            return True
+        elif len(self.included_sections) > 0 or len(self.included_files) > 0:
             return True in [cur_sub_sec.hasData for cur_sub_sec in self.included_sections] or True in [
-                (cur_inc_file.path.exists() and cur_inc_file.path.stat().st_size > 1) for cur_inc_file in self.included_files
+                (cur_inc_file.path.exists() and cur_inc_file.path.stat().st_size > 1) for cur_inc_file in
+                self.included_files
             ]
         elif self.text.strip() != "":
             # If there are no 'includes' then the section is the data
@@ -205,10 +222,37 @@ class OutputSectionData(SubmissionFileData):
     def asQmdSection(self) -> str:
         if not self.hasData and self.only_output_if_data:
             return ""
-        inc_file_txt = "\n\n".join([cur_inc_file.asQmdSection(self.heading_level + 1) for cur_inc_file in self.included_files])
+        inc_file_txt = "\n\n".join(
+            [cur_inc_file.asQmdSection(self.heading_level + 1) for cur_inc_file in self.included_files])
         inc_sec_txt = "\n\n".join([cur_inc_sec.asQmdSection() for cur_inc_sec in self.included_sections])
-        pre = "#" * self.heading_level + f" {self.title} {self.sectionAttr}\n\n{self.description}\n\n{self.text}"
+
+        warnings = ""
+        for warn in self._warnings:
+            warnings += f"\n\n+ **{warn['title']}:** {warn['message']}"
+        if warnings != "":
+            warnings = f'\n\n::: {{.callout-note title="To Consider"}}\n\n{warnings}\n\n:::\n\n'
+
+        errors = ""
+        for err in self._errors:
+            errors += f"\n\n+ **{err['title']}:** {err['message']}"
+        if errors != "":
+            errors = f'\n\n::: {{.callout-important title="Errors"}}\n\n{errors}\n\n:::\n\n'
+
+        pre = "#" * self.heading_level + f" {self.title} {self.sectionAttr}\n\n{self.description}\n\n{self.text}{errors}{warnings}"
         return f"{pre}\n\n{inc_file_txt}\n\n{inc_sec_txt}\n\n{self.post_script}"
+
+    def addSection(self, section: "OutputSectionData") -> Self:
+        self.included_sections.append(section)
+        section.heading_level = self.heading_level + 1
+        return self
+
+    def addWarning(self, warn_title: str, warn_msg: str) -> Self:
+        self._errors.append({"title": warn_title, "message": warn_msg})
+        return self
+
+    def addError(self, error_title: str, error_msg: str) -> Self:
+        self._errors.append({"title": error_title, "message": error_msg})
+        return self
 
 
 @dataclass(kw_only=True)
@@ -235,7 +279,7 @@ class MetaDataclassJson(DataclassJson):
                 return default
         return cur_metadata
 
-    def getMetadata(self, *args, default: Any = None) -> dict[str, Any]|Any:
+    def getMetadata(self, *args, default: Any = None) -> dict[str, Any] | Any:
         """Returns the metadata associated with the assignment.
 
         If the key is not present in the metadata, it will return the default value.
@@ -323,7 +367,8 @@ class GraderOptions(MetaDataclassJson):
 
     _general_editor_command: str | None = None
     general_editor_command = property(
-        *_gen_prop_methods("_general_editor_command", "subl $files"), doc="A command to open a submission file in a text editor."
+        *_gen_prop_methods("_general_editor_command", "subl $files"),
+        doc="A command to open a submission file in a text editor."
     )
 
     # This is a dictionary of metadata associated with the assignment.
@@ -544,7 +589,8 @@ class Assignment(AssignmentData):
             filepath = filepath.absolute()
             filepath = findFileInParents(filepath, cls.ASSIGNMENT_FILE_NAME)
             if filepath is None:
-                raise FileNotFoundError(f"Could not find assignment JSON file in {orig_filepath} or any of its parents.")
+                raise FileNotFoundError(
+                    f"Could not find assignment JSON file in {orig_filepath} or any of its parents.")
 
         if filepath.exists() and filepath.is_file():
             data = json.loads(filepath.read_text())
@@ -646,10 +692,13 @@ class Assignment(AssignmentData):
         # Overwrite the existing file if it already exists.
         LINK_OVERWRITE = 2
 
-    def PostProcessSubmission(self, submission_file: "pathlib.Path|Submission",
-                              exists_protocol: LinkProto = LinkProto.RAISE_ERROR,
-                              warning_callback: Callable[[str],None] | None = None) -> "Submission":
-        ret_val:Submission = submission_file
+    def PostProcessSubmission(
+        self,
+        submission_file: "pathlib.Path|Submission",
+        exists_protocol: LinkProto = LinkProto.RAISE_ERROR,
+        warning_callback: Callable[[str], None | Any] | None = None,
+    ) -> "Submission":
+        ret_val: Submission = submission_file
         if isinstance(submission_file, pathlib.Path):
             ret_val = Submission.load(filepath=submission_file)
 
@@ -661,7 +710,8 @@ class Assignment(AssignmentData):
             for link_item in self.link_template_dir.iterdir():
                 yield link_item
             for link_item in self._optional_files.values():
-                if link_item.copy_to_sub_if_missing and not (ret_val.evaluation_directory / link_item.path.name).exists():
+                if link_item.copy_to_sub_if_missing and not (
+                    ret_val.evaluation_directory / link_item.path.name).exists():
                     yield link_item.path
 
         for link_item in all_linked_files():
@@ -692,7 +742,9 @@ class Assignment(AssignmentData):
         # Now start linking the output stuff together.
         return self.postProcessSubmissionRender(ret_val, warning_callback=warning_callback)
 
-    def postProcessSubmissionRender(self, submission: "Submission", warning_callback: Callable[[str],None] | None = None) -> "Submission":
+    def postProcessSubmissionRender(
+        self, submission: "Submission", warning_callback: Callable[[str], None | Any] | None = None
+    ) -> "Submission":
         for output_file in self._options.output_files:
             output_in_sub_dir = submission.evaluation_directory / output_file
             output_file = self.complete_eval_dir / (submission.evaluation_directory.name + output_in_sub_dir.suffix)
@@ -703,7 +755,9 @@ class Assignment(AssignmentData):
             submission.setMetadata(*META_INTERNAL_SUB_OUTPUT_GRADED, value=str(output_graded))
             try:
                 # Copy output_in_sub_dir to output_graded if needed
-                if (not output_graded.exists()) or (output_graded.exists() and output_graded.stat().st_ctime_ns == output_graded.stat().st_mtime_ns):
+                if (not output_graded.exists()) or (
+                    output_graded.exists() and output_graded.stat().st_ctime_ns == output_graded.stat().st_mtime_ns
+                ):
                     output_graded.parent.mkdir(parents=True, exist_ok=True)
 
                     #  This is to ensure that ctime == mtime!
@@ -711,9 +765,13 @@ class Assignment(AssignmentData):
 
                     output_graded.write_bytes(output_in_sub_dir.read_bytes())
                 elif warning_callback is not None:
-                    warning_callback(f'The graded output file "{output_graded}" already exists and appears modified. {output_graded} will not be overwritten.')
+                    warning_callback(
+                        f'The graded output file "{output_graded}" already exists and appears modified. '
+                        f'{output_graded} will not be overwritten.'
+                    )
                     # stats = output_graded.stat()
-                    # warning_callback(f'The graded output file info a:{stats.st_atime_ns}, c: {stats.st_ctime_ns}, m: {stats.st_mtime_ns}.')
+                    # warning_callback(f'The graded output file info a:{stats.st_atime_ns}, c: {stats.st_ctime_ns},
+                    # m: {stats.st_mtime_ns}.')
 
                 output_file.unlink(missing_ok=True)
                 output_not_anon.unlink(missing_ok=True)
@@ -721,18 +779,22 @@ class Assignment(AssignmentData):
                 pass
             # Create symbolic links
             output_file.symlink_to(
-                output_in_sub_dir.relative_to(output_file.parent, walk_up=True), target_is_directory=output_file.is_dir()
+                output_in_sub_dir.relative_to(output_file.parent, walk_up=True),
+                target_is_directory=output_file.is_dir()
             )
-            output_file.chmod(0o444)
+            # output_file.chmod(0o444)
 
             output_not_anon.symlink_to(
-                output_graded.relative_to(output_not_anon.parent, walk_up=True), target_is_directory=output_not_anon.is_dir()
+                output_graded.relative_to(output_not_anon.parent, walk_up=True),
+                target_is_directory=output_not_anon.is_dir()
             )
 
         return submission
 
-    def AddSubmission(self, submission_file: pathlib.Path, override_anon: bool | None = None,
-                      warning_callback: Callable[[str],None] | None = None) -> "Submission":
+    def AddSubmission(
+        self, submission_file: pathlib.Path, override_anon: bool | None = None,
+        warning_callback: Callable[[str], None | Any] | None = None
+    ) -> "Submission":
         """Add a new submission to the assignment.
         :param submission_file: The path to the submission file to add.
         :param override_anon: If none then abide by the default for the assignment.
@@ -744,7 +806,8 @@ class Assignment(AssignmentData):
         """
         ret_val = Submission.new(self, submission_file=submission_file, override_anon=override_anon)
         ret_val.save()
-        return self.PostProcessSubmission(ret_val, exists_protocol=self.LinkProto.RAISE_ERROR, warning_callback=warning_callback)
+        return self.PostProcessSubmission(ret_val, exists_protocol=self.LinkProto.RAISE_ERROR,
+                                          warning_callback=warning_callback)
 
     # def __pytest_cmd(self):
     #     return "pytest ./ -p shell-utilities -p agh"
@@ -914,7 +977,8 @@ class SubmissionData(MetaDataclassJson):
         if not self.submission_file.exists() or not self.submission_file.is_file():
             raise ValueError(f"submission_file '{self.submission_file}' does not exist or is not a file.")
         if not self.evaluation_directory.exists() or not self.evaluation_directory.is_dir():
-            raise ValueError(f"evaluation_directory '{self.evaluation_directory}' does not exist or is not a directory.")
+            raise ValueError(
+                f"evaluation_directory '{self.evaluation_directory}' does not exist or is not a directory.")
 
 
 class Submission(SubmissionData):
@@ -967,7 +1031,8 @@ class Submission(SubmissionData):
         Returns:
             str: Anonymous name for the submission
         """
-        return anonymizer.anonymize(submission_file.name, assignment.name, str(assignment.year), assignment.grade_period, assignment.course)
+        return anonymizer.anonymize(submission_file.name, assignment.name, str(assignment.year),
+                                    assignment.grade_period, assignment.course)
 
     @classmethod
     def load(cls, filepath: pathlib.Path | None = None):
@@ -989,7 +1054,8 @@ class Submission(SubmissionData):
             filepath = filepath.absolute()
             filepath = findFileInParents(filepath, cls.SUBMISSION_FILE_NAME)
             if filepath is None:
-                raise FileNotFoundError(f"Could not find submission JSON file in {orig_filepath} or any of its parents.")
+                raise FileNotFoundError(
+                    f"Could not find submission JSON file in {orig_filepath} or any of its parents.")
 
         if filepath.exists() and filepath.is_file():
             data = json.loads(filepath.read_text())
@@ -1085,7 +1151,8 @@ class Submission(SubmissionData):
         elif "zip" in self.submission_file.name:
             os.system(f'cd "{self.as_submitted_dir.absolute()}" && unzip "{self.submission_file.absolute()}"')
         elif base_file_name is not None:
-            os.system(f'cp "{self.submission_file.absolute()}" "{self.evaluation_directory.absolute()}/{base_file_name}"')
+            os.system(
+                f'cp "{self.submission_file.absolute()}" "{self.evaluation_directory.absolute()}/{base_file_name}"')
 
         self._missing_files_initially = self.check_missing_files(assignment)
 
@@ -1114,11 +1181,12 @@ class Submission(SubmissionData):
         return self.anon_name
 
     @property
-    def main_output_files(self) -> list[Path | None ]:
+    def main_output_files(self) -> list[Path | None]:
         """Return the submission's output files.
         :return: A list of output files as follows:
         ``[<main-output-file-where-rendered>,
-        <output-file-with-anon-name-in-output-directory>, <output-file-with-anon-name-in-GRADED-output-directory>, <output-file-with-NON-anon-name-in-output-directory>]``
+        <output-file-with-anon-name-in-output-directory>, <output-file-with-anon-name-in-GRADED-output-directory>,
+        <output-file-with-NON-anon-name-in-output-directory>]``
         """
         assign = Assignment.load()
         rendered = None
@@ -1129,7 +1197,7 @@ class Submission(SubmissionData):
 
         main = self.getMetadata(*META_INTERNAL_SUB_OUTPUT_COMPLETE)
         graded = self.getMetadata(*META_INTERNAL_SUB_OUTPUT_GRADED)
-        non_anon :None|str|Path= self.getMetadata(*META_INTERNAL_SUB_OUTPUT_NON_ANON)
+        non_anon: None | str | Path = self.getMetadata(*META_INTERNAL_SUB_OUTPUT_NON_ANON)
 
         if main is not None:
             main = Path(main)
@@ -1144,14 +1212,14 @@ class Submission(SubmissionData):
     def _getErrWarnList(self, type: Literal["errors", "warnings"]) -> list[str]:
         return list(self.getMetadata(*META_INTERNAL_SUB_KEYS, type, default={}).values())
 
-    def _setErrWarnItem(self, type: Literal["errors", "warnings"], key: str, txt_or_markdown:str) -> Self:
+    def _setErrWarnItem(self, type: Literal["errors", "warnings"], key: str, txt_or_markdown: str) -> Self:
         keys = list(META_INTERNAL_SUB_KEYS)
         keys.append(type)
         keys.append(key)
         return self.setMetadata(*keys, value=txt_or_markdown)
 
     def _delErrWarnItem(self, type: Literal["errors", "warnings"], key: str) -> Self:
-        exist_md_dict:dict[Any, Any] = self.getMetadata(*META_INTERNAL_SUB_KEYS, type, default={})
+        exist_md_dict: dict[Any, Any] = self.getMetadata(*META_INTERNAL_SUB_KEYS, type, default={})
         exist_md_dict.pop(key, None)
         return self.setMetadata(*META_INTERNAL_SUB_KEYS, type, value=exist_md_dict)
 
@@ -1167,14 +1235,15 @@ class Submission(SubmissionData):
 
         missing_files = self.check_missing_files(Assignment.load())
         if len(missing_files) > 0:
-            errors.append(f"Missing required file{'s' if len(missing_files) > 1 else ''}: {[mf.name for mf in missing_files]}")
+            errors.append(
+                f"Missing required file{'s' if len(missing_files) > 1 else ''}: {[mf.name for mf in missing_files]}")
 
         if len(errors) > 0:
             return errors
 
         return None
 
-    def addError(self, key:str, txt_or_markdown: str) -> "Submission":
+    def addError(self, key: str, txt_or_markdown: str) -> "Submission":
         """Add an error to the submission.
         These are NOT testing errors, but anything preventing the submission from being tested.
         """
@@ -1184,7 +1253,8 @@ class Submission(SubmissionData):
         # errors: list[str] = self.getMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "errors", default=[])
         # errors.append(txt_or_markdown)
         # return self.setMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "errors", value=errors)
-    def delError(self, key:str) -> "Submission":
+
+    def delError(self, key: str) -> "Submission":
         return self._delErrWarnItem("errors", key)
 
     @property
@@ -1194,11 +1264,11 @@ class Submission(SubmissionData):
         """
         return self._getErrWarnList("warnings")
 
-    def addWarning(self, key:str, txt_or_markdown: str) -> "Submission":
+    def addWarning(self, key: str, txt_or_markdown: str) -> "Submission":
         """Add a warning to the submission.
         These are NOT testing warnings, but anything possibly preventing the submission from being tested.
         """
         return self._setErrWarnItem("warnings", key, txt_or_markdown)
 
-    def delWarning(self, key:str) -> "Submission":
+    def delWarning(self, key: str) -> "Submission":
         return self._delErrWarnItem("warnings", key)
