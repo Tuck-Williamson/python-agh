@@ -1,9 +1,11 @@
 import os
+import signal
+from collections.abc import Callable
 from pathlib import Path
-from typing import ClassVar, Callable
 
 import pytest
-from pytestshellutils.shell import ProcessResult, ScriptSubprocess
+from pytestshellutils.shell import ProcessResult
+from pytestshellutils.shell import ScriptSubprocess
 
 from .agh_data import Assignment
 from .agh_data import OutputSectionData
@@ -38,8 +40,7 @@ def pytest_configure(config):
         plugin = AghPtPlugin(config)
         config.pluginmanager.register(plugin, name="agh_plugin")
         config.addinivalue_line("markers", "build: This marks anything related to building a submission's exe.")
-        config.addinivalue_line("markers",
-                                "render: This marks anything related to rendering a submission's documentation.")
+        config.addinivalue_line("markers", "render: This marks anything related to rendering a submission's documentation.")
 
 
 @pytest.fixture
@@ -75,8 +76,7 @@ def storeRunOutErr(tgt_name: str, res, resultsDir):
 
 
 evaluationDataOS = OutputSectionData(path=Path("eval_data_section.md"), title="Evaluation Data", heading_level=1)
-instructor_out_data = OutputSectionData(path=Path("instructor_data_section.md"), title="Instructor Data",
-                                        heading_level=1)
+instructor_out_data = OutputSectionData(path=Path("instructor_data_section.md"), title="Instructor Data", heading_level=1)
 
 
 def _make_sections(resultsDir: Path, agh_assignment: Assignment, agh_submission: Submission):
@@ -121,7 +121,7 @@ def _make_sections(resultsDir: Path, agh_assignment: Assignment, agh_submission:
 def agh_build_makefile(agh_submission, shell, cache, request, resultsDir) -> Callable[[str], str]:
     request.applymarker(pytest.mark.build)
 
-    def build(target: str | None = None, include_build_in_eval:bool=True):
+    def build(target: str | None = None, include_build_in_eval: bool = True):
         # Check to see if this is the first time we're building this submission.
         first_build = False
         if agh_submission.getMetadata(TEST_MD_KEY, "initial_build_success", default=None) is None:
@@ -145,14 +145,14 @@ def agh_build_makefile(agh_submission, shell, cache, request, resultsDir) -> Cal
         stdout_file.parent.mkdir(exist_ok=True)
         stdout_file.write_text(res.stdout)
         buildOutSection.included_files.append(
-            SubmissionFileData(path=stdout_file, title="Build Stdout Output",
-                               heading_level=buildOutSection.heading_level + 1))
+            SubmissionFileData(path=stdout_file, title="Build Stdout Output", heading_level=buildOutSection.heading_level + 1)
+        )
         stderr_file = resultsDir / f"{target if target else ''}build.stderr"
         stderr_file.write_text(res.stderr)
         if len(res.stderr) > 0:
             buildOutSection.included_files.append(
-                SubmissionFileData(path=stdout_file, title="Build Stderr Output",
-                                   heading_level=buildOutSection.heading_level + 1))
+                SubmissionFileData(path=stdout_file, title="Build Stderr Output", heading_level=buildOutSection.heading_level + 1)
+            )
 
         return res
 
@@ -166,24 +166,27 @@ def _core_file_saved(agh_submission):
     if path_good:
         agh_submission.delWarning("core_file_saved")
     else:
-        agh_submission.addWarning("core_file_saved",
-                                  f"Core file pattern will not allow debugging information to be captured.")
+        agh_submission.addWarning("core_file_saved", "Core file pattern will not allow debugging information to be captured.")
     return path_good
 
 
 @pytest.fixture
-def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _core_file_saved) -> Callable[
-    ..., OutputSectionData]:
-    def run_executable(command: str, test_key: str, test_exe_file: Path, timeout_sec: int = 25,
-                       kill_timeout_sec: int = 50,
-                       parent_section: OutputSectionData | None = None) -> tuple[ProcessResult, OutputSectionData]:
+def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _core_file_saved) -> Callable[..., OutputSectionData]:
+    def run_executable(
+        command: str,
+        test_key: str,
+        test_exe_file: Path,
+        timeout_sec: int = 25,
+        kill_timeout_sec: int = 50,
+        parent_section: OutputSectionData | None = None,
+    ) -> tuple[ProcessResult, OutputSectionData]:
         """Run an executable and return the results.
         .. important::
 
             You must finish setting up the returned output section with a title etc.
         """
 
-        cmdLineCmd = f'ulimit -c unlimited && timeout -vk {kill_timeout_sec} -s SIGXCPU {timeout_sec} ./{command}'
+        cmdLineCmd = f"ulimit -c unlimited && timeout -vk {kill_timeout_sec} -s SIGXCPU {timeout_sec} ./{command}"
         result = shell.run(cmdLineCmd, shell=True, cwd=agh_submission.evaluation_directory)
 
         if parent_section is None:
@@ -194,42 +197,51 @@ def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _cor
 
         std_out_file = resultsDir / f"{test_key}.stdout"
         current_out_section.included_files.append(
-            SubmissionFileData(path=std_out_file.relative_to(agh_submission.evaluation_directory),
-                               title="Standard Output",
-                               description="This is the standard output from running your code.",
-                               type="default"))
+            SubmissionFileData(
+                path=std_out_file.relative_to(agh_submission.evaluation_directory),
+                title="Standard Output",
+                description="This is the standard output from running your code.",
+                type="default",
+            )
+        )
         std_out_file.parent.mkdir(exist_ok=True)
         std_out_file.write_text(result.stdout, encoding="utf-8", errors="replace")
 
         if len(result.stderr) > 0:
             std_err_file = resultsDir / f"{test_key}.stderr"
             current_out_section.included_files.append(
-                SubmissionFileData(path=std_err_file.relative_to(agh_submission.evaluation_directory),
-                                   title="Standard Error",
-                                   description="This is the standard error from running your code.",
-                                   type="default"))
+                SubmissionFileData(
+                    path=std_err_file.relative_to(agh_submission.evaluation_directory),
+                    title="Standard Error",
+                    description="This is the standard error from running your code.",
+                    type="default",
+                )
+            )
             std_err_file.write_text(result.stderr, encoding="utf-8", errors="replace")
 
         # Handle core dumps.
         core_dump_file = agh_submission.evaluation_directory / CORE_DUMP_FILE_NAME
         if core_dump_file.exists():
-
             # Run gdb on the core dump
             result_debug = shell.run(
                 f'gdb. / {test_exe_file} {core_dump_file.name} --eval-command "thread apply all bt full" --batch',
-                shell=True, cwd=agh_submission.evaluation_directory)
+                shell=True,
+                cwd=agh_submission.evaluation_directory,
+            )
             core_dump_file.unlink()
 
             if len(result_debug.stdout) > 0:
                 # There is data add to the eval section.
-                debug_output_file = resultsDir / (test_key + '.backtrace')
+                debug_output_file = resultsDir / (test_key + ".backtrace")
                 debug_output_file.write_text(result_debug.stdout)
                 current_out_section.included_files.append(
-                    SubmissionFileData(path=debug_output_file.relative_to(agh_submission.evaluation_directory),
-                                       title="Backtrace from Debug", type='default',
-                                       description="Your code had an error that caused it to crash. This is the "
-                                                   "debugging "
-                                                   "backtrace from that crash."))
+                    SubmissionFileData(
+                        path=debug_output_file.relative_to(agh_submission.evaluation_directory),
+                        title="Backtrace from Debug",
+                        type="default",
+                        description="Your code had an error that caused it to crash. This is the debugging backtrace from that crash.",
+                    )
+                )
             else:
                 # todo: Handle this better.
                 current_out_section.text += "\n\n**Warning:** no backtrace data available from core file!"
@@ -238,11 +250,8 @@ def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _cor
         if err_code:
             # current_out_section.text += f"\n\n**Warning:** Exe exited with error code: {err_code}!"
             if 124 <= err_code <= 128:
-                current_out_section.addWarning("Timeout",
-                                               f"Your executable took too long to run and had to be terminated: {
-                                               err_code}!")
+                current_out_section.addWarning("Timeout", f"Your executable took too long to run and had to be terminated: {err_code}!")
             elif err_code > 128:
-                import signal
                 sig_name = ""
                 try:
                     sig_name = signal.strsignal(err_code - 128)
@@ -250,9 +259,9 @@ def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _cor
                     pass
 
                 agh_submission.setMetadata(TEST_MD_KEY, "EXE_FAULT", value=True)
-                current_out_section.addError("Crash Likely",
-                                             f"Exit Code: {err_code}\n\nExe exited with signal {sig_name}: "
-                                             f"{err_code - 128}")
+                current_out_section.addError(
+                    "Crash Likely", f"Exit Code: {err_code}\n\nExe exited with signal {sig_name}: {err_code - 128}"
+                )
             # if err_code == 23:  # Leak sanitizer exitcode.
             #     threadWarn = EvalFile(testStdOut.with_suffix('.md'), '', '', just_text=True, unlisted=unlisted)
             #     curEFiles.insert(0, threadWarn)
@@ -384,8 +393,7 @@ def agh_render_output(
             (resultsDir / ".render.stdout.txt").write_text(f"{cmd_str}\n" + res.stdout)
             (resultsDir / ".render.stderr.txt").write_text(res.stderr)
             if res.returncode != 0:
-                agh_submission.addWarning("render issue",
-                                          f"Render '{cmd_str}' failed with return code {res.returncode}.").save()
+                agh_submission.addWarning("render issue", f"Render '{cmd_str}' failed with return code {res.returncode}.").save()
                 raise RuntimeError(f"quarto failed with return code {res.returncode}")
             agh_assignment.postProcessSubmissionRender(
                 agh_submission, warning_callback=lambda warn: agh_submission.addWarning("render warning", warn)
