@@ -138,20 +138,20 @@ def agh_build_makefile(agh_submission, shell, cache, request, resultsDir) -> Cal
         if first_build:
             agh_submission.setMetadata(TEST_MD_KEY, "initial_build_success", value=res.returncode == 0)
 
-        buildOutSection = OutputSectionData(title="Build Output", heading_level=1)
+        build_out_section = OutputSectionData(path=Path("build_data.md"), title="Build Output")
         if include_build_in_eval:
-            evaluationDataOS.addSection(buildOutSection)
+            evaluationDataOS.addSection(build_out_section)
         stdout_file = resultsDir / f"{target if target else ''}build.stdout"
         stdout_file.parent.mkdir(exist_ok=True)
         stdout_file.write_text(res.stdout)
-        buildOutSection.included_files.append(
-            SubmissionFileData(path=stdout_file, title="Build Stdout Output", heading_level=buildOutSection.heading_level + 1)
+        build_out_section.included_files.append(
+            SubmissionFileData(path=stdout_file.relative_to(agh_submission.evaluation_directory), title="Build Stdout Output")
         )
         stderr_file = resultsDir / f"{target if target else ''}build.stderr"
         stderr_file.write_text(res.stderr)
         if len(res.stderr) > 0:
-            buildOutSection.included_files.append(
-                SubmissionFileData(path=stdout_file, title="Build Stderr Output", heading_level=buildOutSection.heading_level + 1)
+            build_out_section.included_files.append(
+                SubmissionFileData(path=stdout_file.relative_to(agh_submission.evaluation_directory), title="Build Stderr Output")
             )
 
         return res
@@ -179,6 +179,8 @@ def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _cor
         timeout_sec: int = 25,
         kill_timeout_sec: int = 50,
         parent_section: OutputSectionData | None = None,
+        handle_core_dump: bool = True,
+        handle_timeout: bool = True,
     ) -> tuple[ProcessResult, OutputSectionData]:
         """Run an executable and return the results.
         .. important::
@@ -186,8 +188,14 @@ def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _cor
             You must finish setting up the returned output section with a title etc.
         """
 
-        cmdLineCmd = f"ulimit -c unlimited && timeout -vk {kill_timeout_sec} -s SIGXCPU {timeout_sec} ./{command}"
-        result = shell.run(cmdLineCmd, shell=True, cwd=agh_submission.evaluation_directory)
+        # Build up the shell command line based on options selected by the grader.
+        shell_cmd_line = command
+        if handle_timeout:
+            shell_cmd_line = "timeout -vk {kill_timeout_sec} -s SIGXCPU {timeout_sec} " + shell_cmd_line
+        if handle_core_dump:
+            shell_cmd_line = f"ulimit -c unlimited && " + shell_cmd_line
+
+        result = shell.run(shell_cmd_line, shell=True, cwd=agh_submission.evaluation_directory)
 
         if parent_section is None:
             parent_section = evaluationDataOS
@@ -205,7 +213,7 @@ def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _cor
             )
         )
         std_out_file.parent.mkdir(exist_ok=True)
-        std_out_file.write_text(result.stdout, encoding="utf-8", errors="replace")
+        std_out_file.write_text(result.stdout, encoding="ascii", errors="backslashreplace")
 
         if len(result.stderr) > 0:
             std_err_file = resultsDir / f"{test_key}.stderr"
@@ -217,7 +225,7 @@ def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _cor
                     type="default",
                 )
             )
-            std_err_file.write_text(result.stderr, encoding="utf-8", errors="replace")
+            std_err_file.write_text(result.stderr, encoding="ascii", errors="backslashreplace")
 
         # Handle core dumps.
         core_dump_file = agh_submission.evaluation_directory / CORE_DUMP_FILE_NAME
