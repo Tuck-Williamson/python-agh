@@ -193,7 +193,7 @@ def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _cor
         if handle_timeout:
             shell_cmd_line = "timeout -vk {kill_timeout_sec} -s SIGXCPU {timeout_sec} " + shell_cmd_line
         if handle_core_dump:
-            shell_cmd_line = f"ulimit -c unlimited && " + shell_cmd_line
+            shell_cmd_line = "ulimit -c unlimited && " + shell_cmd_line
 
         result = shell.run(shell_cmd_line, shell=True, cwd=agh_submission.evaluation_directory)
 
