@@ -23,7 +23,7 @@ class TestAssignmentData(unittest.TestCase):
             # Defaults
             self.assertEqual(a._name, "assignment")
             self.assertEqual(a._year, 2025)
-            self.assertEqual(a._grade_period, "Fall")
+            # self.assertEqual(a._grade_period, "Fall") This now switches based on the time of year.
             self.assertEqual(a._course, "CSCI-340")
             # self.assertEqual(a._submission_files, [])
             self.assertEqual(a._required_files, {})
@@ -345,7 +345,7 @@ def test_pps_links_test_files(temp_assignment, temp_submission_file):
 
 
 # def test_postprocesssubmission_ignores_existing_link(temp_assignment, temp_submission_file, tmp_path):
-#     """Test that PostProcessSubmission ignores existing link when protocol is IGNORE_ERROR."""
+#     """Test that PostProcessSubmission ignores existing link when protocol is SKIP_FILE."""
 #     conflict_file = tmp_path / "tests"
 #     conflict_file.mkdir()
 #
@@ -353,9 +353,9 @@ def test_pps_links_test_files(temp_assignment, temp_submission_file):
 #     (new_submission.evaluation_directory / "tests").symlink_to(conflict_file)
 #
 #     try:
-#         temp_assignment.PostProcessSubmission(temp_submission_file, exists_protocol=LinkProto.IGNORE_ERROR)
+#         temp_assignment.PostProcessSubmission(temp_submission_file, exists_protocol=LinkProto.SKIP_FILE)
 #     except FileExistsError:
-#         pytest.fail("PostProcessSubmission should not raise FileExistsError when IGNORE_ERROR is used.")
+#         pytest.fail("PostProcessSubmission should not raise FileExistsError when SKIP_FILE is used.")
 
 
 # def test_postprocesssubmission_overwrites_existing_link(temp_assignment, temp_submission_file, tmp_path):

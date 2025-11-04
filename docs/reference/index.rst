@@ -5,3 +5,4 @@ Reference
     :glob:
 
     agh*
+    pytest_plugin*

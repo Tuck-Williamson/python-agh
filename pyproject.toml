@@ -22,13 +22,13 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: Unix",
     "Operating System :: POSIX",
-    "Operating System :: Microsoft :: Windows",
+    #    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     #    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
+    #    "Programming Language :: Python :: 3.10",
+    #    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: Implementation :: CPython",
@@ -42,11 +42,12 @@ classifiers = [
 keywords = [
     # eg: "keyword1", "keyword2", "keyword3",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 dependencies = [
     "pytest>=8.4.2",
     "pytest-shell-utilities>=1.9.7",
     "rich>=14.2.0",
+    "ipython>=9.6.0",
     "argcomplete",
     "rich-argparse",
 ]
