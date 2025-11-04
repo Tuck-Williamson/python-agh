@@ -171,7 +171,9 @@ def _core_file_saved(agh_submission):
 
 
 @pytest.fixture
-def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _core_file_saved) -> Callable[..., tuple[ProcessResult,OutputSectionData]]:
+def agh_run_executable(
+    agh_submission, shell: ScriptSubprocess, resultsDir, _core_file_saved
+) -> Callable[..., tuple[ProcessResult, OutputSectionData]]:
     def run_executable(
         command: str,
         test_key: str,

@@ -23,7 +23,7 @@ class TestAssignmentData(unittest.TestCase):
             # Defaults
             self.assertEqual(a._name, "assignment")
             self.assertEqual(a._year, 2025)
-            self.assertEqual(a._grade_period, "Fall")
+            # self.assertEqual(a._grade_period, "Fall") This now switches based on the time of year.
             self.assertEqual(a._course, "CSCI-340")
             # self.assertEqual(a._submission_files, [])
             self.assertEqual(a._required_files, {})
