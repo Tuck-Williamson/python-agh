@@ -14,8 +14,8 @@ assignees: ''
 ## Value Statement
 <!-- Describe the value this feature will bring to the project and its users -->
 
-**As a** [type of user]  
-**I want** [goal/desire]  
+**As a** [type of user]
+**I want** [goal/desire]
 **So that** [benefit/value]
 
 <!-- Example:
@@ -40,7 +40,7 @@ So that I can focus on the most critical tasks first
 -->
 
 
-<!-- 
+<!--
 ## Additional Context
 
 ## Possible Implementation
