@@ -1013,8 +1013,9 @@ class Submission(SubmissionData):
 
         self.__post_init__()
 
-    def save(self):
+    def save(self) -> Self:
         super().save(self.evaluation_directory / self.SUBMISSION_FILE_NAME)
+        return self
 
     @classmethod
     def get_anon_name(cls, assignment: Assignment, submission_file: pathlib.Path):
@@ -1242,13 +1243,13 @@ class Submission(SubmissionData):
         """
 
         # DON'T USE the property above. It adds transient errors. Just get the metadata and add to it.
-        return self._setErrWarnItem("errors", key, txt_or_markdown)
+        return self._setErrWarnItem("errors", key, txt_or_markdown).save()
         # errors: list[str] = self.getMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "errors", default=[])
         # errors.append(txt_or_markdown)
         # return self.setMetadata(META_AGH_INTERNAL_KEY, META_INTERNAL_SUB_KEY, "errors", value=errors)
 
     def delError(self, key: str) -> "Submission":
-        return self._delErrWarnItem("errors", key)
+        return self._delErrWarnItem("errors", key).save()
 
     @property
     def warnings(self) -> None | list[str]:
@@ -1261,7 +1262,7 @@ class Submission(SubmissionData):
         """Add a warning to the submission.
         These are NOT testing warnings, but anything possibly preventing the submission from being tested.
         """
-        return self._setErrWarnItem("warnings", key, txt_or_markdown)
+        return self._setErrWarnItem("warnings", key, txt_or_markdown).save()
 
     def delWarning(self, key: str) -> "Submission":
-        return self._delErrWarnItem("warnings", key)
+        return self._delErrWarnItem("warnings", key).save()
