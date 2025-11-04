@@ -181,7 +181,7 @@ class SubmissionFileData(DataclassJson):
         hdr_txt = "#" * heading_level + " " + self.title + self.sectionAttr
         ret_val = f"\n\n{hdr_txt}\n\n{self.description}\n\n"
         if self.path.exists() and self.path.stat().st_size > max_file_size:
-            with self.path.open("rt", encoding="ascii", errors="replace") as f:
+            with self.path.open("rt", encoding="ascii", errors="backslashreplace") as f:
                 ret_val += (
                     f"**[File too large! Contents truncated to {max_file_size} bytes.]{{.mark}}**\n\n```{{."
                     f"{self.type}}}\n{f.read(max_file_size)}\n```\n\n"
@@ -687,7 +687,7 @@ class Assignment(AssignmentData):
         # Raise an error if the file exists.
         RAISE_ERROR = 0
         # Ignore an error and continue with the rest of the links if the file exists (don't do anything).
-        IGNORE_ERROR = 1
+        SKIP_FILE = 1
         # Overwrite the existing file if it already exists.
         LINK_OVERWRITE = 2
 
@@ -710,7 +710,10 @@ class Assignment(AssignmentData):
                 yield link_item
             for link_item in self._optional_files.values():
                 if link_item.copy_to_sub_if_missing and not (ret_val.evaluation_directory / link_item.path.name).exists():
-                    yield link_item.path
+                    ret_path = link_item.path
+                    if not ret_path.exists():
+                        ret_path = self.link_template_dir / link_item.path.name
+                    yield ret_path
 
         for link_item in all_linked_files():
             link_tgt = ret_val.evaluation_directory / link_item.name
@@ -720,20 +723,20 @@ class Assignment(AssignmentData):
                 link_item = link_item.readlink()
 
             # Depending on the protocol handle if there is already an existing link.
-            if link_tgt.exists():
+            if link_tgt.exists(follow_symlinks=False):
                 # Handle if the link exists but is pointing to the correct target already - continue.
                 if link_tgt.is_symlink() and link_tgt.readlink() == link_item:
-                    continue
-
-                match exists_protocol:
-                    case self.LinkProto.RAISE_ERROR:
-                        raise FileExistsError(link_tgt)
-                    case self.LinkProto.IGNORE_ERROR:
-                        continue
-                    case self.LinkProto.LINK_OVERWRITE:
-                        link_tgt.unlink()
-                    case _:
-                        raise NotImplementedError("New existing link protocol added, but code not added")
+                    link_tgt.unlink(missing_ok=True)
+                else:
+                    match exists_protocol:
+                        case self.LinkProto.RAISE_ERROR:
+                            raise FileExistsError(link_tgt)
+                        case self.LinkProto.SKIP_FILE:
+                            continue
+                        case self.LinkProto.LINK_OVERWRITE:
+                            link_tgt.unlink(missing_ok=True)
+                        case _:
+                            raise NotImplementedError("New existing link protocol added, but code not added")
 
             link_tgt.symlink_to(link_item.absolute(), target_is_directory=link_item.is_dir())
 

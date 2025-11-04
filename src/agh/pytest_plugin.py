@@ -171,7 +171,7 @@ def _core_file_saved(agh_submission):
 
 
 @pytest.fixture
-def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _core_file_saved) -> Callable[..., OutputSectionData]:
+def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _core_file_saved) -> Callable[..., tuple[ProcessResult,OutputSectionData]]:
     def run_executable(
         command: str,
         test_key: str,
@@ -181,6 +181,7 @@ def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _cor
         parent_section: OutputSectionData | None = None,
         handle_core_dump: bool = True,
         handle_timeout: bool = True,
+        **kwargs,
     ) -> tuple[ProcessResult, OutputSectionData]:
         """Run an executable and return the results.
         .. important::
@@ -191,11 +192,11 @@ def agh_run_executable(agh_submission, shell: ScriptSubprocess, resultsDir, _cor
         # Build up the shell command line based on options selected by the grader.
         shell_cmd_line = command
         if handle_timeout:
-            shell_cmd_line = "timeout -vk {kill_timeout_sec} -s SIGXCPU {timeout_sec} " + shell_cmd_line
+            shell_cmd_line = f"timeout -vk {kill_timeout_sec} -s SIGXCPU {timeout_sec} " + shell_cmd_line
         if handle_core_dump:
             shell_cmd_line = "ulimit -c unlimited && " + shell_cmd_line
 
-        result = shell.run(shell_cmd_line, shell=True, cwd=agh_submission.evaluation_directory)
+        result = shell.run(shell_cmd_line, shell=True, cwd=agh_submission.evaluation_directory, **kwargs)
 
         if parent_section is None:
             parent_section = evaluationDataOS
