@@ -198,7 +198,7 @@ def agh_run_executable(
         if handle_core_dump:
             shell_cmd_line = "ulimit -c unlimited && " + shell_cmd_line
 
-        #Clear any old core files.
+        # Clear any old core files.
         for core_file in agh_submission.evaluation_directory.glob(f"{CORE_DUMP_FILE_NAME}.*"):
             core_file.unlink()
 
@@ -236,13 +236,15 @@ def agh_run_executable(
 
         # Handle core dumps. We now in ubuntu need to search for CORE_DUMP_FILE_NAME.pid.
         # core_dump_file = agh_submission.evaluation_directory / CORE_DUMP_FILE_NAME
-        agh_submission.delWarning('crash_detected')
-        agh_submission.delError('crash_detection_issue')
+        agh_submission.delWarning("crash_detected")
+        agh_submission.delError("crash_detection_issue")
 
         core_dump_files = [*agh_submission.evaluation_directory.glob(f"{CORE_DUMP_FILE_NAME}.*")]
         core_dump_file = core_dump_files[0] if len(core_dump_files) > 0 else None
         if core_dump_file and core_dump_file.exists():
-            agh_submission.addWarning('crash_detected', 'The submission crashed. Check the "Backtrace from Debug" section for more details.')
+            agh_submission.addWarning(
+                "crash_detected", 'The submission crashed. Check the "Backtrace from Debug" section for more details.'
+            )
             # Run gdb on the core dump
 
             debug_output_file = resultsDir / (test_key + ".backtrace")
@@ -254,7 +256,7 @@ def agh_run_executable(
             core_dump_file.unlink()
 
             if result_debug.returncode != 0:
-                agh_submission.addError('crash_detection_issue', '**ERROR:** gdb failed to run on the core dump!')
+                agh_submission.addError("crash_detection_issue", "**ERROR:** gdb failed to run on the core dump!")
 
             if debug_output_file.exists() and debug_output_file.stat().st_size > 0:
                 # There is data add to the eval section.
@@ -270,7 +272,9 @@ def agh_run_executable(
                 )
             else:
                 # todo: Handle this better.
-                agh_submission.addError('crash_detection_issue', '**Warning:** no backtrace data available from core file!\n' + str(result_debug.cmdline))
+                agh_submission.addError(
+                    "crash_detection_issue", "**Warning:** no backtrace data available from core file!\n" + str(result_debug.cmdline)
+                )
 
         err_code = result.returncode
         if err_code:
