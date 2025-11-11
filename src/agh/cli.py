@@ -738,6 +738,41 @@ def run(args=None):
     cli_args = parser.parse_args(args=args)
     console.rule(f"[b i]agh[/] - Assignment Grading Helper - Version: [b i]{__version__}")
 
+    if cli_args.debug_core_files or cli_args.restore_default_core_location:
+        handleCore(cli_args)
+
+    # Command handling.
+    match cli_args.command:
+        case "status":
+            assignment = getCurrentAssignment()
+            displayAssignmentInfo(cli_args)
+            displaySubmissionInfo(cli_args, assignment)
+        case "assignment":
+            handleAssignmentCmd(cli_args)
+        case "submission":
+            handleSubmissionCmd(cli_args)
+        case "run":
+            assignment = getCurrentAssignment()
+            try:
+                asyncio.run(execute_pytest_on_submissions(cli_args, assignment))
+            except KeyboardInterrupt:
+                pass
+        case "test":
+            assignment = getCurrentAssignment()
+            asyncio.run(execute_pytest_on_submissions(cli_args, assignment, extra_pytest_args='-m "not build and not render"'))
+        case "build":
+            assignment = getCurrentAssignment()
+            asyncio.run(execute_pytest_on_submissions(cli_args, assignment, extra_pytest_args='-m "build"'))
+        case "render":
+            assignment = getCurrentAssignment()
+            asyncio.run(execute_pytest_on_submissions(cli_args, assignment, extra_pytest_args='-m "render"'))
+        case _:
+            console.log(cli_args, style="error")
+    # print(start(args))
+    parser.exit(0)
+
+
+def handleCore(cli_args: argparse.Namespace):
     # Core file Handling.
     prior_pattern_path = getCurrentAssignment().root_directory / ".prior_core_pattern.txt"
     core_pattern_path = Path("/proc/sys/kernel/core_pattern")
@@ -775,36 +810,6 @@ def run(args=None):
                 exit(1)
             console.print(f"[bold green]Core dump location restored to '{prior_loc}'")
             exit(0)
-
-    # Command handling.
-    match cli_args.command:
-        case "status":
-            assignment = getCurrentAssignment()
-            displayAssignmentInfo(cli_args)
-            displaySubmissionInfo(cli_args, assignment)
-        case "assignment":
-            handleAssignmentCmd(cli_args)
-        case "submission":
-            handleSubmissionCmd(cli_args)
-        case "run":
-            assignment = getCurrentAssignment()
-            try:
-                asyncio.run(execute_pytest_on_submissions(cli_args, assignment))
-            except KeyboardInterrupt:
-                pass
-        case "test":
-            assignment = getCurrentAssignment()
-            asyncio.run(execute_pytest_on_submissions(cli_args, assignment, extra_pytest_args='-m "not build and not render"'))
-        case "build":
-            assignment = getCurrentAssignment()
-            asyncio.run(execute_pytest_on_submissions(cli_args, assignment, extra_pytest_args='-m "build"'))
-        case "render":
-            assignment = getCurrentAssignment()
-            asyncio.run(execute_pytest_on_submissions(cli_args, assignment, extra_pytest_args='-m "render"'))
-        case _:
-            console.log(cli_args, style="error")
-    # print(start(args))
-    parser.exit(0)
 
 
 # todo: create custom url scheme so I can run things from links in the output.
