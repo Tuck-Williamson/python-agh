@@ -202,6 +202,9 @@ def agh_run_executable(
         for core_file in agh_submission.evaluation_directory.glob(f"{CORE_DUMP_FILE_NAME}.*"):
             core_file.unlink()
 
+        if "stdin" in kwargs.keys() and kwargs["stdin"] is not None and isinstance(kwargs["stdin"], str):
+            shell_cmd_line = f"bash -c 'echo -e \"{kwargs['stdin']}\" | {shell_cmd_line}'"
+
         result = shell.run(shell_cmd_line, shell=True, cwd=agh_submission.evaluation_directory, **kwargs)
 
         if parent_section is None:
