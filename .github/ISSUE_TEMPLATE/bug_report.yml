@@ -1,0 +1,70 @@
+name: "\U0001F41B Bug Report"
+description: "Report a reproducible problem or bug with python-agh."
+title: "[Bug]: "
+labels:
+  - bug
+assignees:
+  - Tuck-Williamson
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Bug Report
+
+        Thanks for taking the time to help improve python-agh! Please complete the sections below as thoroughly as possible.
+
+  - type: input
+    id: environment
+    attributes:
+      label: "Environment"
+      description: "Describe your operating system (e.g., Windows, MacOS, Linux), and any other relevant environment details."
+      placeholder: "e.g., MacOS Monterey, VS Code 1.62"
+
+  - type: dropdown
+    id: python_version
+    attributes:
+      label: "Python Version(s)"
+      description: "Select all Python versions where the bug was observed."
+      options:
+        - "3.12"
+        - "3.13"
+      multiple: true
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Steps to Reproduce"
+      description: "Describe the steps needed to reproduce this issue. Please be specific."
+      placeholder: |
+        1. Go to '...'
+        2. Run 'python script.py ...'
+        3. See error '...'
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected Behavior"
+      description: "Describe what you expected to happen."
+      placeholder: "I expected ..."
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: "Actual Behavior"
+      description: "Describe what actually happens. Add logs, warnings, or screenshot images if possible."
+      placeholder: "Instead, I saw ..."
+
+  - type: input
+    id: version
+    attributes:
+      label: "Version (if applicable)"
+      description: "Which version of python-agh are you using?"
+      placeholder: "e.g., v1.0.3, commit sha, or branch name"
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: "Additional Information"
+      description: "Add any other context about the problem here, such as possible solutions, related issues, or links."
+      placeholder: "Any other details..."
