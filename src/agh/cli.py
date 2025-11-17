@@ -350,7 +350,7 @@ assign_add_required_parser.add_argument("type", help="Type of the required file"
     "yaml",
     "zig",
     "zsh",
-]
+] # This is from `quarto pandoc --list-highlight-languages`
 assign_add_required_parser.add_argument("-d", "--description", help="Description of the required files", type=str, default="")
 assign_add_required_parser.add_argument("-t", "--title", help="Title of the required files", type=str, default="")
 assign_add_required_parser.add_argument(
