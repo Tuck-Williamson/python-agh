@@ -1,3 +1,7 @@
+This is a passion project that grew from several scripts I used to help me grade college C-language programming assignments.
+I still need to clean up several things from the times I 'just needed something to do X 10 days ago'.
+If you find this software helpful, please let me know!
+
 ========
 Overview
 ========
